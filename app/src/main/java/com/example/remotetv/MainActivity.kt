@@ -481,6 +481,30 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun sendDirectInput(text: String) {
+        Thread {
+            runOnUiThread { statusText.text = "Mengirim Teks: $text" }
+            // Kirim teks
+            text.forEach { char ->
+                val keycode = charToHid(char)
+                if (keycode != 0) {
+                    val shift = if (char.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(char)) 0x02 else 0x00
+                    sendModifierKeyDown(shift, keycode)
+                    try { Thread.sleep(20) } catch (e: Exception) {}
+                    sendKeyUp()
+                    try { Thread.sleep(20) } catch (e: Exception) {}
+                }
+            }
+            // Opsional: Kirim Enter di akhir
+            try { Thread.sleep(200) } catch (e: Exception) {}
+            sendKeyDown(0x28) // Enter
+            try { Thread.sleep(50) } catch (e: Exception) {}
+            sendKeyUp()
+            
+            runOnUiThread { statusText.text = "Terkirim: $text" }
+        }.start()
+    }
+
     private fun sendString(text: String) {
         Thread {
             text.forEach { char ->
