@@ -18,14 +18,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.util.concurrent.Executors
+import android.view.KeyEvent
 
 class MainActivity : AppCompatActivity() {
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedDevice: BluetoothDevice? = null
-    private val executor = Executors.newSingleThreadExecutor()
+    private val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // UI Components
@@ -253,6 +253,15 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(resetHidButton)
 
+        val discoverButton = Button(this).apply {
+            text = "📡 Make Discoverable"
+            setBackgroundColor(resources.getColor(android.R.color.holo_purple))
+            setTextColor(resources.getColor(android.R.color.white))
+            setPadding(30, 20, 30, 20)
+            setOnClickListener { makeDiscoverable() }
+        }
+        layout.addView(discoverButton)
+
         connectButton = Button(this).apply {
             text = "Hubungkan ke B860H"
             setBackgroundColor(resources.getColor(android.R.color.holo_green_dark))
@@ -308,6 +317,17 @@ class MainActivity : AppCompatActivity() {
             ).apply { setMargins(10, 10, 10, 10) }
             setOnClickListener { onClick() }
         }
+    }
+
+    private fun makeDiscoverable() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+             Toast.makeText(this, "Izin Advertise tidak diberikan", Toast.LENGTH_SHORT).show()
+             return
+        }
+        val discoverableIntent = android.content.Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+            putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300)
+        }
+        startActivity(discoverableIntent)
     }
 
     private fun scanDevices() {
@@ -394,6 +414,36 @@ class MainActivity : AppCompatActivity() {
             hidDevice?.sendReport(connectedDevice, id, data)
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        Log.d("HID", "Physical Key Down: $keyCode")
+        return when (keyCode) {
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> {
+                sendKey(0x28) // HID Enter
+                true
+            }
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                sendConsumerKey(0xE9.toByte()) // HID Vol+
+                true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                sendConsumerKey(0xEA.toByte()) // HID Vol-
+                true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                sendConsumerKey(0xCD.toByte()) // HID Play/Pause
+                true
+            }
+            KeyEvent.KEYCODE_MUTE -> {
+                sendConsumerKey(0xE2.toByte()) // HID Mute
+                true
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                super.onKeyDown(keyCode, event) // Biarkan tombol back default
+            }
+            else -> super.onKeyDown(keyCode, event)
         }
     }
 
