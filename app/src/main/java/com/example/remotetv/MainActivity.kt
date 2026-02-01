@@ -168,6 +168,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Unregister first to clear zombie states
+        Log.d("HID", "Unregistering app before registration...")
+        hidDevice?.unregisterApp()
+
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
             "Remote TV",
             "Android Remote",
@@ -185,7 +189,16 @@ class MainActivity : AppCompatActivity() {
             BluetoothHidDeviceAppQosSettings.MAX
         )
 
-        hidDevice?.registerApp(sdpSettings, null, qosSettings, executor, hidDeviceCallback)
+        // Delay registration to allow unregister to complete
+        mainHandler.postDelayed({
+            Log.d("HID", "Registering app...")
+            val result = hidDevice?.registerApp(sdpSettings, null, qosSettings, executor, hidDeviceCallback)
+            Log.d("HID", "RegisterApp call result: $result")
+            
+            if (result == false) {
+                runOnUiThread { statusText.text = "Gagal memanggil registerApp (Internal Error)" }
+            }
+        }, 500)
     }
 
     private fun createUI() {
@@ -227,6 +240,18 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { scanDevices() }
         }
         layout.addView(scanButton)
+
+        val resetHidButton = Button(this).apply {
+            text = "🔄 Reset HID Service"
+            setBackgroundColor(resources.getColor(android.R.color.holo_orange_dark))
+            setTextColor(resources.getColor(android.R.color.white))
+            setPadding(30, 20, 30, 20)
+            setOnClickListener { 
+                statusText.text = "Resetting HID..."
+                registerHidDevice() 
+            }
+        }
+        layout.addView(resetHidButton)
 
         connectButton = Button(this).apply {
             text = "Hubungkan ke B860H"
