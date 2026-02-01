@@ -305,7 +305,7 @@ class MainActivity : AppCompatActivity() {
         rowMid.addView(btnLeft)
 
         okButton = createStyledButton("OK", android.R.color.holo_green_light)
-        setupButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() }) // Keyboard Enter
+        setupRepeaterButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() }) // Keyboard Enter (Hold supported)
         rowMid.addView(okButton)
 
         val btnRight = createStyledButton("→", android.R.color.holo_blue_dark)
@@ -341,10 +341,130 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(volContainer)
 
-        // Settings Button (Consumer Menu - 0x0040)
-        val settingsButton = createStyledButton("SET", android.R.color.holo_orange_dark)
-        setupButton(settingsButton, { sendConsumerKeyDown(0x0040) }, { sendConsumerKeyUp() })
-        layout.addView(settingsButton)
+        // --- SET Alternatif ---
+        val setTitle = TextView(this).apply {
+            text = "SET / Settings Alternatif"
+            textSize = 16f
+            setTextColor(resources.getColor(android.R.color.black))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 20, 0, 10)
+        }
+        layout.addView(setTitle)
+
+        // 1) Consumer Menu (0x0040)
+        val setMenuBtn = createStyledButton("SET: Menu (0x40)", android.R.color.holo_orange_dark)
+        setupRepeaterButton(setMenuBtn, { sendConsumerKeyDown(0x0040) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuBtn)
+
+        // 2) Consumer Menu Pick / Select (0x0041)
+        val setPickBtn = createStyledButton("SET: Menu Pick (0x41)", android.R.color.holo_orange_light)
+        setupRepeaterButton(setPickBtn, { sendConsumerKeyDown(0x0041) }, { sendConsumerKeyUp() })
+        layout.addView(setPickBtn)
+
+        // 3) Consumer Media Select (0x0183) - sering sebagai sumber input/gear
+        val setMediaSelBtn = createStyledButton("SET: Media Select (0x183)", android.R.color.holo_green_dark)
+        setupRepeaterButton(setMediaSelBtn, { sendConsumerKeyDown(0x0183) }, { sendConsumerKeyUp() })
+        layout.addView(setMediaSelBtn)
+
+        // 4) Consumer AC Home (0x0223) - sering membuka menu utama/setting
+        val setHomeBtn = createStyledButton("SET: Home (0x223)", android.R.color.holo_blue_dark)
+        setupRepeaterButton(setHomeBtn, { sendConsumerKeyDown(0x0223) }, { sendConsumerKeyUp() })
+        layout.addView(setHomeBtn)
+
+        // 5) Keyboard Application/Context Menu (0x65)
+        val setKeyboardMenuBtn = createStyledButton("SET: Keyboard Menu (0x65)", android.R.color.holo_red_light)
+        setupRepeaterButton(setKeyboardMenuBtn, { sendKeyDown(0x65) }, { sendKeyUp() })
+        layout.addView(setKeyboardMenuBtn)
+
+        // 6) Consumer Menu Up (0x0042)
+        val setMenuUpBtn = createStyledButton("SET: Menu Up (0x42)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuUpBtn, { sendConsumerKeyDown(0x0042) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuUpBtn)
+
+        // 7) Consumer Menu Down (0x0043)
+        val setMenuDownBtn = createStyledButton("SET: Menu Down (0x43)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuDownBtn, { sendConsumerKeyDown(0x0043) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuDownBtn)
+
+        // 8) Consumer Menu Left (0x0044)
+        val setMenuLeftBtn = createStyledButton("SET: Menu Left (0x44)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuLeftBtn, { sendConsumerKeyDown(0x0044) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuLeftBtn)
+
+        // 9) Consumer Menu Right (0x0045)
+        val setMenuRightBtn = createStyledButton("SET: Menu Right (0x45)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuRightBtn, { sendConsumerKeyDown(0x0045) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuRightBtn)
+
+        // 10) Consumer Menu Escape (0x0046)
+        val setMenuEscBtn = createStyledButton("SET: Menu Esc (0x46)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuEscBtn, { sendConsumerKeyDown(0x0046) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuEscBtn)
+
+        // 11) Consumer Menu Value Increase (0x0047)
+        val setValueIncBtn = createStyledButton("SET: Value + (0x47)", android.R.color.holo_green_light)
+        setupRepeaterButton(setValueIncBtn, { sendConsumerKeyDown(0x0047) }, { sendConsumerKeyUp() })
+        layout.addView(setValueIncBtn)
+
+        // 12) Consumer Menu Value Decrease (0x0048)
+        val setValueDecBtn = createStyledButton("SET: Value - (0x48)", android.R.color.holo_green_light)
+        setupRepeaterButton(setValueDecBtn, { sendConsumerKeyDown(0x0048) }, { sendConsumerKeyUp() })
+        layout.addView(setValueDecBtn)
+
+        // 13) Consumer AC Back (0x0224) - sering dipakai untuk kembali/keluar dari menu
+        val setBackBtn = createStyledButton("SET: Back (0x224)", android.R.color.darker_gray)
+        setupRepeaterButton(setBackBtn, { sendConsumerKeyDown(0x0224) }, { sendConsumerKeyUp() })
+        layout.addView(setBackBtn)
+
+        // 14) Consumer AC Search (0x0221) - beberapa aplikasi membuka panel pencarian/pengaturan
+        val setSearchBtn = createStyledButton("SET: Search (0x221)", android.R.color.holo_purple)
+        setupRepeaterButton(setSearchBtn, { sendConsumerKeyDown(0x0221) }, { sendConsumerKeyUp() })
+        layout.addView(setSearchBtn)
+
+        // 15) Keyboard Escape (0x29) - alternatif umum untuk keluar menu
+        val setEscKbBtn = createStyledButton("SET: ESC (KB 0x29)", android.R.color.background_dark)
+        setupRepeaterButton(setEscKbBtn, { sendKeyDown(0x29) }, { sendKeyUp() })
+        layout.addView(setEscKbBtn)
+
+        // 6) Consumer Menu Up (0x0042)
+        val setMenuUpBtn = createStyledButton("SET: Menu Up (0x42)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuUpBtn, { sendConsumerKeyDown(0x0042) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuUpBtn)
+
+        // 7) Consumer Menu Down (0x0043)
+        val setMenuDownBtn = createStyledButton("SET: Menu Down (0x43)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuDownBtn, { sendConsumerKeyDown(0x0043) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuDownBtn)
+
+        // 8) Consumer Menu Left (0x0044)
+        val setMenuLeftBtn = createStyledButton("SET: Menu Left (0x44)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuLeftBtn, { sendConsumerKeyDown(0x0044) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuLeftBtn)
+
+        // 9) Consumer Menu Right (0x0045)
+        val setMenuRightBtn = createStyledButton("SET: Menu Right (0x45)", android.R.color.holo_blue_light)
+        setupRepeaterButton(setMenuRightBtn, { sendConsumerKeyDown(0x0045) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuRightBtn)
+
+        // 10) Consumer Menu Escape (0x0046)
+        val setMenuEscBtn = createStyledButton("SET: Menu Esc (0x46)", android.R.color.darker_gray)
+        setupRepeaterButton(setMenuEscBtn, { sendConsumerKeyDown(0x0046) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuEscBtn)
+
+        // 11) Consumer Menu Value Increase (0x0047)
+        val setMenuPlusBtn = createStyledButton("SET: Menu + (0x47)", android.R.color.holo_green_light)
+        setupRepeaterButton(setMenuPlusBtn, { sendConsumerKeyDown(0x0047) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuPlusBtn)
+
+        // 12) Consumer Menu Value Decrease (0x0048)
+        val setMenuMinusBtn = createStyledButton("SET: Menu - (0x48)", android.R.color.holo_red_dark)
+        setupRepeaterButton(setMenuMinusBtn, { sendConsumerKeyDown(0x0048) }, { sendConsumerKeyUp() })
+        layout.addView(setMenuMinusBtn)
+
+        // 13) AL Consumer Control Configuration (0x0182)
+        val setConfigBtn = createStyledButton("SET: Config (0x182)", android.R.color.holo_orange_light)
+        setupRepeaterButton(setConfigBtn, { sendConsumerKeyDown(0x0182) }, { sendConsumerKeyUp() })
+        layout.addView(setConfigBtn)
 
         setContentView(scrollView)
     }
