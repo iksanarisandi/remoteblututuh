@@ -38,6 +38,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceInfoText: TextView
     private lateinit var connectButton: Button
     private lateinit var scanButton: Button
+    private lateinit var okButton: Button
+    private lateinit var volUpButton: Button
+    private lateinit var volDownButton: Button
 
     private val PERMISSION_REQUEST_CODE = 100
 
@@ -287,34 +290,32 @@ class MainActivity : AppCompatActivity() {
         advRow.addView(discoverButton)
         layout.addView(advRow)
 
-        // --- POWER Button ---
-        val powerBtn = createStyledButton("POWER", android.R.color.holo_red_dark)
-        setupRepeaterButton(powerBtn, { sendConsumerKeyDown(0x0030) }, { sendConsumerKeyUp() })
-        layout.addView(powerBtn)
-
-        // --- Voice & YouTube ---
+        // --- Feature Row: Power | YouTube | Voice ---
         val featureRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             setPadding(0, 20, 0, 20)
         }
-        val btnVoice = Button(this).apply {
-            text = "🎤 Voice"
-            textSize = 18f
-            setPadding(30, 20, 30, 20)
-            setOnClickListener { startVoiceRecognition() }
-        }
-        featureRow.addView(btnVoice)
+        
+        // Power Button (0x0030)
+        val btnPower = createStyledButton("POWER", android.R.color.holo_red_dark)
+        setupRepeaterButton(btnPower, { sendConsumerKeyDown(0x0030) }, { sendConsumerKeyUp() })
+        featureRow.addView(btnPower)
 
-        val btnYoutube = Button(this).apply {
-            text = "▶ YouTube"
-            textSize = 18f
-            setPadding(30, 20, 30, 20)
-            setBackgroundColor(resources.getColor(android.R.color.holo_red_light))
-            setTextColor(resources.getColor(android.R.color.white))
-            setOnClickListener { sendConsumerKeyDown(0x0221) } // AC Search
+        // YouTube Button (0x0221 Search / AL)
+        val btnYoutube = createStyledButton("YouTube", android.R.color.holo_red_light)
+        // Using Search (0x0221) as requested alternative
+        btnYoutube.setOnClickListener { 
+            sendConsumerKeyDown(0x0221)
+            Handler(Looper.getMainLooper()).postDelayed({ sendConsumerKeyUp() }, 100)
         }
         featureRow.addView(btnYoutube)
+
+        // Voice Button
+        val btnVoice = createStyledButton("🎤 Voice", android.R.color.holo_blue_light)
+        btnVoice.setOnClickListener { startVoiceRecognition() }
+        featureRow.addView(btnVoice)
+
         layout.addView(featureRow)
 
         // --- D-Pad ---
@@ -369,13 +370,13 @@ class MainActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER
             setPadding(20, 20, 20, 20)
         }
-        volUpButton = createStyledButton("VOL +", android.R.color.holo_purple)
-        setupRepeaterButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
-        volContainer.addView(volUpButton)
-
         volDownButton = createStyledButton("VOL -", android.R.color.background_dark)
         setupRepeaterButton(volDownButton, { sendConsumerKeyDown(0x00EA) }, { sendConsumerKeyUp() })
         volContainer.addView(volDownButton)
+
+        volUpButton = createStyledButton("VOL +", android.R.color.holo_purple)
+        setupRepeaterButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
+        volContainer.addView(volUpButton)
         layout.addView(volContainer)
 
         setContentView(scrollView)
@@ -399,10 +400,44 @@ class MainActivity : AppCompatActivity() {
             val result = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
             val text = result?.get(0)
             if (!text.isNullOrEmpty()) {
-                statusText.text = "Sending: $text"
-                sendString(text)
+                sendVoiceSearch(text)
             }
         }
+    }
+
+    private fun sendVoiceSearch(text: String) {
+        Thread {
+            // 1. Trigger Search Menu
+            runOnUiThread { statusText.text = "Membuka Pencarian..." }
+            sendConsumerKeyDown(0x0221) // AC Search
+            try { Thread.sleep(50) } catch (e: Exception) {}
+            sendConsumerKeyUp()
+            
+            // Tunggu UI Search muncul (delay estimasi)
+            try { Thread.sleep(1500) } catch (e: Exception) {}
+
+            // 2. Ketik Teks
+            runOnUiThread { statusText.text = "Mengetik: $text" }
+            text.forEach { char ->
+                val keycode = charToHid(char)
+                if (keycode != 0) {
+                    val shift = if (char.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(char)) 0x02 else 0x00
+                    sendModifierKeyDown(shift, keycode)
+                    try { Thread.sleep(30) } catch (e: Exception) {}
+                    sendKeyUp()
+                    try { Thread.sleep(30) } catch (e: Exception) {}
+                }
+            }
+            
+            // 3. Kirim Enter untuk eksekusi pencarian
+            try { Thread.sleep(500) } catch (e: Exception) {}
+            runOnUiThread { statusText.text = "Mengirim Enter..." }
+            sendKeyDown(0x28) // Keyboard Enter
+            try { Thread.sleep(50) } catch (e: Exception) {}
+            sendKeyUp()
+            
+            runOnUiThread { statusText.text = "Selesai: $text" }
+        }.start()
     }
 
     private fun sendString(text: String) {
@@ -448,25 +483,6 @@ class MainActivity : AppCompatActivity() {
                 200,
                 androidx.appcompat.widget.LinearLayoutCompat.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(10, 10, 10, 10) }
-        }
-    }
-
-    private fun setupButton(button: Button, onDown: () -> Unit, onUp: () -> Unit) {
-        button.setOnTouchListener { v, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start()
-                    onDown()
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
-                    onUp()
-                    true
-                }
-                else -> false
-            }
         }
     }
 
@@ -568,40 +584,6 @@ class MainActivity : AppCompatActivity() {
         report[1] = ((usageCode shr 8) and 0xFF).toByte()
         // Rest are 0x00
         sendReport(2, report)
-    }
-
-    private fun sendComboDownMixed(keyboardCode: Int, consumerCode: Int) {
-        // 1. Send Keyboard Down
-        val reportK = ByteArray(8)
-        reportK[2] = keyboardCode.toByte()
-        sendReport(1, reportK)
-
-        // 2. Send Consumer Down
-        val reportC = ByteArray(8)
-        reportC[0] = (consumerCode and 0xFF).toByte()
-        reportC[1] = ((consumerCode shr 8) and 0xFF).toByte()
-        sendReport(2, reportC)
-        
-        Log.d("HID", "Sent Combo: Key($keyboardCode) + Cons($consumerCode)")
-    }
-
-    private fun sendComboDownConsumer(code1: Int, code2: Int) {
-        val report = ByteArray(8)
-        // Key 1
-        report[0] = (code1 and 0xFF).toByte()
-        report[1] = ((code1 shr 8) and 0xFF).toByte()
-        // Key 2
-        report[2] = (code2 and 0xFF).toByte()
-        report[3] = ((code2 shr 8) and 0xFF).toByte()
-        
-        sendReport(2, report)
-        Log.d("HID", "Sent Combo Consumer: $code1 + $code2")
-    }
-
-    private fun sendComboUp() {
-        sendReport(1, ByteArray(8)) // Release Keyboard
-        sendReport(2, ByteArray(8)) // Release Consumer
-        Log.d("HID", "Released Combo")
     }
 
     private fun sendConsumerKeyUp() {
