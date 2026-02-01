@@ -88,7 +88,7 @@ class MainActivity : AppCompatActivity() {
         0x19.toByte(), 0x00.toByte(),       //   Usage Minimum (0)
         0x2A.toByte(), 0xFF.toByte(), 0x03.toByte(), //   Usage Maximum (1023)
         0x75.toByte(), 0x10.toByte(),       //   Report Size (16)
-        0x95.toByte(), 0x02.toByte(),       //   Report Count (2) - Allow 2 keys simultaneously
+        0x95.toByte(), 0x04.toByte(),       //   Report Count (4) - INCREASED to 4 to be safe
         0x81.toByte(), 0x00.toByte(),       //   Input (Data, Array, Absolute)
         0xC0.toByte()                       // End Collection
     )
@@ -284,18 +284,15 @@ class MainActivity : AppCompatActivity() {
 
         // Combo Button (OK + Play)
         bothButton = createStyledButton("OK+▶ (Pair)", android.R.color.holo_orange_light)
-        setupButton(bothButton, 
+        setupRepeaterButton(bothButton, 
             { 
-                // Down: Send BOTH
-                sendKeyDown(0x28) // Keyboard Enter
-                sendConsumerKeyDown(0x00CD) // Consumer Play/Pause
-                Log.d("HID", "COMBO DOWN SENT")
+                // Down: Send BOTH (Keyboard Enter + Consumer Play)
+                // Note: Using 0xB0 (Play) instead of 0xCD (Play/Pause) for better compatibility with "Play" prompt
+                sendComboDownMixed(0x28, 0x00B0) 
             }, 
             { 
                 // Up: Release BOTH
-                sendKeyUp()
-                sendConsumerKeyUp()
-                Log.d("HID", "COMBO UP SENT")
+                sendComboUp()
             }
         )
         buttonContainer.addView(bothButton)
@@ -308,12 +305,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
         }
 
+        // Volume Buttons with Repeater
         volUpButton = createStyledButton("VOL +", android.R.color.holo_purple)
-        setupButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
+        setupRepeaterButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
         volContainer.addView(volUpButton)
 
         volDownButton = createStyledButton("VOL -", android.R.color.background_dark)
-        setupButton(volDownButton, { sendConsumerKeyDown(0x00EA) }, { sendConsumerKeyUp() })
+        setupRepeaterButton(volDownButton, { sendConsumerKeyDown(0x00EA) }, { sendConsumerKeyUp() })
         volContainer.addView(volDownButton)
 
         layout.addView(volContainer)
@@ -345,6 +343,37 @@ class MainActivity : AppCompatActivity() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                    onUp()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun setupRepeaterButton(button: Button, onDown: () -> Unit, onUp: () -> Unit) {
+        val repeaterHandler = Handler(Looper.getMainLooper())
+        val repeaterRunnable = object : Runnable {
+            override fun run() {
+                onDown() // Resend Down Report
+                repeaterHandler.postDelayed(this, 100) // Repeat every 100ms
+            }
+        }
+
+        button.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start()
+                    // Start Repeating
+                    onDown() // First press
+                    repeaterHandler.postDelayed(repeaterRunnable, 200) // Start repeating after 200ms
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                    // Stop Repeating
+                    repeaterHandler.removeCallbacks(repeaterRunnable)
                     onUp()
                     true
                 }
@@ -408,15 +437,36 @@ class MainActivity : AppCompatActivity() {
 
     // Consumer Helpers
     private fun sendConsumerKeyDown(usageCode: Int) {
-        val report = ByteArray(4)
+        val report = ByteArray(8) // Updated to 8 bytes (4 keys support)
         report[0] = (usageCode and 0xFF).toByte()
         report[1] = ((usageCode shr 8) and 0xFF).toByte()
-        // report[2] & [3] are 0x00
+        // Rest are 0x00
         sendReport(2, report)
     }
 
+    private fun sendComboDownMixed(keyboardCode: Int, consumerCode: Int) {
+        // 1. Send Keyboard Down
+        val reportK = ByteArray(8)
+        reportK[2] = keyboardCode.toByte()
+        sendReport(1, reportK)
+
+        // 2. Send Consumer Down
+        val reportC = ByteArray(8)
+        reportC[0] = (consumerCode and 0xFF).toByte()
+        reportC[1] = ((consumerCode shr 8) and 0xFF).toByte()
+        sendReport(2, reportC)
+        
+        Log.d("HID", "Sent Combo: Key($keyboardCode) + Cons($consumerCode)")
+    }
+
+    private fun sendComboUp() {
+        sendReport(1, ByteArray(8)) // Release Keyboard
+        sendReport(2, ByteArray(8)) // Release Consumer
+        Log.d("HID", "Released Combo")
+    }
+
     private fun sendConsumerKeyUp() {
-        sendReport(2, ByteArray(4))
+        sendReport(2, ByteArray(8)) // Clear all consumer keys
     }
 
     private fun sendReport(id: Int, data: ByteArray): Boolean {
