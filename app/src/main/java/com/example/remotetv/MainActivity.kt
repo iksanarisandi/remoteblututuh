@@ -87,13 +87,13 @@ class MainActivity : AppCompatActivity() {
         0x75.toByte(), 0x01.toByte(),       //   Report Size (1)
         0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
         0x09.toByte(), 0xCD.toByte(),       //   Usage (Play/Pause)
-        0x81.toByte(), 0x06.toByte(),       //   Input (Data, Variable, Relative)
+        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
         0x09.toByte(), 0xE9.toByte(),       //   Usage (Volume Increment)
-        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
         0x09.toByte(), 0xEA.toByte(),       //   Usage (Volume Decrement)
-        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
         0x09.toByte(), 0xE2.toByte(),       //   Usage (Mute)
-        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
         0x95.toByte(), 0x04.toByte(),       //   Report Count (4)
         0x81.toByte(), 0x01.toByte(),       //   Input (Constant) - Padding
         0xC0.toByte()                       // End Collection
@@ -322,18 +322,16 @@ class MainActivity : AppCompatActivity() {
         report[2] = keyCode.toByte() // Key 1
         sendReport(1, report)
         
+        // Wait briefly
+        try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
+
         // Send Key Up
         sendReport(1, ByteArray(8))
     }
 
     private fun sendConsumerKey(usageCode: Byte) {
-        // Consumer Control Report Structure based on Descriptor:
-        // Byte 0: Consumer Control (Bit 0: Play/Pause, Bit 1: Vol+, Bit 2: Vol-, Bit 3: Mute)
-        // Wait, our descriptor is specific bits or array?
-        // Let's re-read the descriptor I wrote.
-        // Usage Play/Pause (CD), Vol+ (E9), Vol- (EA), Mute (E2).
-        // Report Size 1, Count 1 for each.
-        // So Byte 0 bits:
+        // Consumer Control Report Structure
+        // Byte 0 bits:
         // Bit 0: Play/Pause
         // Bit 1: Vol+
         // Bit 2: Vol-
@@ -348,6 +346,10 @@ class MainActivity : AppCompatActivity() {
         }
         
         sendReport(2, report) // Key Down
+        
+        // Wait briefly
+        try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
+
         sendReport(2, ByteArray(1)) // Key Up
     }
 
@@ -363,6 +365,7 @@ class MainActivity : AppCompatActivity() {
     private fun sendReport(id: Int, data: ByteArray) {
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
         if (connectedDevice != null) {
+            Log.d("HID", "Sending Report ID: $id, Data: ${data.joinToString { "%02x".format(it) }}")
             hidDevice?.sendReport(connectedDevice, id, data)
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
