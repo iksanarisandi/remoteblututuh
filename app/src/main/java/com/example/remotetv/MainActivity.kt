@@ -382,11 +382,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendCombo() {
-        // OK then Play/Pause
+        // Send OK and Play/Pause SIMULTANEOUSLY
+        // Note: Because OK is Report ID 1 (Keyboard) and Play/Pause is Report ID 2 (Consumer),
+        // we can't send them in a single report frame.
+        // However, we can simulate "Holding" them together by sending both "Down" states 
+        // before sending any "Up" states.
+        
         Thread {
-            sendKey(0x28) // Enter
-            Thread.sleep(100)
-            sendConsumerKey(0x00CD) // Play/Pause
+            // 1. Press OK (Keyboard Down)
+            val reportOk = ByteArray(8)
+            reportOk[2] = 0x28.toByte() // Enter
+            sendReport(1, reportOk)
+            
+            // Small delay to ensure first packet is processed but not released
+            Thread.sleep(20)
+
+            // 2. Press Play/Pause (Consumer Down)
+            val reportMedia = ByteArray(2)
+            val usageCode = 0x00CD // Play/Pause
+            reportMedia[0] = (usageCode and 0xFF).toByte()
+            reportMedia[1] = ((usageCode shr 8) and 0xFF).toByte()
+            sendReport(2, reportMedia)
+
+            // 3. HOLD both for 3 seconds (standard pairing duration)
+            Log.d("HID", "Holding Combo OK + Play/Pause...")
+            runOnUiThread { Toast.makeText(this, "Tahan 3 detik...", Toast.LENGTH_SHORT).show() }
+            Thread.sleep(3000)
+
+            // 4. Release OK
+            sendReport(1, ByteArray(8))
+
+            // 5. Release Play/Pause
+            sendReport(2, ByteArray(2))
+            
+            Log.d("HID", "Combo Released")
+            runOnUiThread { Toast.makeText(this, "Combo Selesai", Toast.LENGTH_SHORT).show() }
         }.start()
     }
 
