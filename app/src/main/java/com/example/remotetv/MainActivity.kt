@@ -410,30 +410,39 @@ class MainActivity : AppCompatActivity() {
             // 1. Trigger Search Menu
             runOnUiThread { statusText.text = "Membuka Pencarian..." }
             sendConsumerKeyDown(0x0221) // AC Search
-            try { Thread.sleep(50) } catch (e: Exception) {}
+            try { Thread.sleep(100) } catch (e: Exception) {}
             sendConsumerKeyUp()
             
-            // Tunggu UI Search muncul (delay estimasi)
-            try { Thread.sleep(1500) } catch (e: Exception) {}
+            // Tunggu UI Search muncul (Voice UI biasanya butuh waktu)
+            try { Thread.sleep(2000) } catch (e: Exception) {}
 
-            // 2. Ketik Teks
+            // 2. Kirim tombol RIGHT untuk keluar dari mode Mic (jika perlu)
+            // Banyak Android TV membuka search dalam mode "Listening". 
+            // Tekan kanan untuk fokus ke text box.
+            runOnUiThread { statusText.text = "Fokus ke text box..." }
+            sendKeyDown(0x4F) // Right Arrow
+            try { Thread.sleep(100) } catch (e: Exception) {}
+            sendKeyUp()
+            try { Thread.sleep(500) } catch (e: Exception) {}
+
+            // 3. Ketik Teks
             runOnUiThread { statusText.text = "Mengetik: $text" }
             text.forEach { char ->
                 val keycode = charToHid(char)
                 if (keycode != 0) {
                     val shift = if (char.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(char)) 0x02 else 0x00
                     sendModifierKeyDown(shift, keycode)
-                    try { Thread.sleep(30) } catch (e: Exception) {}
+                    try { Thread.sleep(50) } catch (e: Exception) {} // Increased delay
                     sendKeyUp()
-                    try { Thread.sleep(30) } catch (e: Exception) {}
+                    try { Thread.sleep(50) } catch (e: Exception) {}
                 }
             }
             
-            // 3. Kirim Enter untuk eksekusi pencarian
+            // 4. Kirim Enter untuk eksekusi pencarian
             try { Thread.sleep(500) } catch (e: Exception) {}
             runOnUiThread { statusText.text = "Mengirim Enter..." }
             sendKeyDown(0x28) // Keyboard Enter
-            try { Thread.sleep(50) } catch (e: Exception) {}
+            try { Thread.sleep(100) } catch (e: Exception) {}
             sendKeyUp()
             
             runOnUiThread { statusText.text = "Selesai: $text" }
