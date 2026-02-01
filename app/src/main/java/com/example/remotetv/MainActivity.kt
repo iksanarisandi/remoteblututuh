@@ -81,21 +81,13 @@ class MainActivity : AppCompatActivity() {
         0x09.toByte(), 0x01.toByte(),       // Usage (Consumer Control)
         0xA1.toByte(), 0x01.toByte(),       // Collection (Application)
         0x85.toByte(), 0x02.toByte(),       //   Report ID (2)
-        0x05.toByte(), 0x0C.toByte(),       //   Usage Page (Consumer Devices)
         0x15.toByte(), 0x00.toByte(),       //   Logical Minimum (0)
-        0x25.toByte(), 0x01.toByte(),       //   Logical Maximum (1)
-        0x75.toByte(), 0x01.toByte(),       //   Report Size (1)
+        0x26.toByte(), 0xFF.toByte(), 0x03.toByte(), //   Logical Maximum (1023)
+        0x19.toByte(), 0x00.toByte(),       //   Usage Minimum (0)
+        0x2A.toByte(), 0xFF.toByte(), 0x03.toByte(), //   Usage Maximum (1023)
+        0x75.toByte(), 0x10.toByte(),       //   Report Size (16)
         0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
-        0x09.toByte(), 0xCD.toByte(),       //   Usage (Play/Pause)
-        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
-        0x09.toByte(), 0xE9.toByte(),       //   Usage (Volume Increment)
-        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
-        0x09.toByte(), 0xEA.toByte(),       //   Usage (Volume Decrement)
-        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
-        0x09.toByte(), 0xE2.toByte(),       //   Usage (Mute)
-        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute)
-        0x95.toByte(), 0x04.toByte(),       //   Report Count (4)
-        0x81.toByte(), 0x01.toByte(),       //   Input (Constant) - Padding
+        0x81.toByte(), 0x00.toByte(),       //   Input (Data, Array, Absolute)
         0xC0.toByte()                       // End Collection
     )
 
@@ -176,7 +168,7 @@ class MainActivity : AppCompatActivity() {
             "Remote TV",
             "Android Remote",
             "Android",
-            BluetoothHidDevice.SUBCLASS1_COMBO,
+            BluetoothHidDevice.SUBCLASS1_KEYBOARD,
             REPORT_MAP
         )
 
@@ -280,7 +272,7 @@ class MainActivity : AppCompatActivity() {
         okButton = createButton("OK", android.R.color.holo_green_light) { sendKey(0x28) } // 0x28 is Enter
         buttonContainer.addView(okButton)
 
-        playPauseButton = createButton("▶||", android.R.color.holo_blue_light) { sendConsumerKey(0xCD.toByte()) }
+        playPauseButton = createButton("▶||", android.R.color.holo_blue_light) { sendConsumerKey(0x00CD) }
         buttonContainer.addView(playPauseButton)
 
         bothButton = createButton("OK+▶||", android.R.color.holo_orange_light) { sendCombo() }
@@ -294,10 +286,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
         }
 
-        volUpButton = createButton("VOL +", android.R.color.holo_purple) { sendConsumerKey(0xE9.toByte()) }
+        volUpButton = createButton("VOL +", android.R.color.holo_purple) { sendConsumerKey(0x00E9) }
         volContainer.addView(volUpButton)
 
-        volDownButton = createButton("VOL -", android.R.color.background_dark) { sendConsumerKey(0xEA.toByte()) }
+        volDownButton = createButton("VOL -", android.R.color.background_dark) { sendConsumerKey(0x00EA) }
         volContainer.addView(volDownButton)
 
         layout.addView(volContainer)
@@ -374,28 +366,19 @@ class MainActivity : AppCompatActivity() {
         sendReport(1, ByteArray(8))
     }
 
-    private fun sendConsumerKey(usageCode: Byte) {
-        // Consumer Control Report Structure
-        // Byte 0 bits:
-        // Bit 0: Play/Pause
-        // Bit 1: Vol+
-        // Bit 2: Vol-
-        // Bit 3: Mute
+    private fun sendConsumerKey(usageCode: Int) {
+        // Consumer Control Report Structure: 2 Bytes (Little Endian)
+        val report = ByteArray(2)
+        report[0] = (usageCode and 0xFF).toByte()
+        report[1] = ((usageCode shr 8) and 0xFF).toByte()
         
-        val report = ByteArray(1)
-        when (usageCode) {
-             0xCD.toByte() -> report[0] = 1 // Bit 0
-             0xE9.toByte() -> report[0] = 2 // Bit 1
-             0xEA.toByte() -> report[0] = 4 // Bit 2
-             0xE2.toByte() -> report[0] = 8 // Bit 3
-        }
-        
-        sendReport(2, report) // Key Down
+        Log.d("HID", "Sending Consumer Key: $usageCode")
+        val sent = sendReport(2, report) // Key Down
         
         // Wait briefly
         try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
 
-        sendReport(2, ByteArray(1)) // Key Up
+        if (sent) sendReport(2, ByteArray(2)) // Key Up
     }
 
     private fun sendCombo() {
@@ -403,17 +386,18 @@ class MainActivity : AppCompatActivity() {
         Thread {
             sendKey(0x28) // Enter
             Thread.sleep(100)
-            sendConsumerKey(0xCD.toByte()) // Play/Pause
+            sendConsumerKey(0x00CD) // Play/Pause
         }.start()
     }
 
-    private fun sendReport(id: Int, data: ByteArray) {
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
+    private fun sendReport(id: Int, data: ByteArray): Boolean {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return false
         if (connectedDevice != null) {
             Log.d("HID", "Sending Report ID: $id, Data: ${data.joinToString { "%02x".format(it) }}")
-            hidDevice?.sendReport(connectedDevice, id, data)
+            return hidDevice?.sendReport(connectedDevice, id, data) ?: false
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
+            return false
         }
     }
 
@@ -425,19 +409,19 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                sendConsumerKey(0xE9.toByte()) // HID Vol+
+                sendConsumerKey(0x00E9) // HID Vol+
                 true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                sendConsumerKey(0xEA.toByte()) // HID Vol-
+                sendConsumerKey(0x00EA) // HID Vol-
                 true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                sendConsumerKey(0xCD.toByte()) // HID Play/Pause
+                sendConsumerKey(0x00CD) // HID Play/Pause
                 true
             }
             KeyEvent.KEYCODE_MUTE -> {
-                sendConsumerKey(0xE2.toByte()) // HID Mute
+                sendConsumerKey(0x00E2) // HID Mute
                 true
             }
             KeyEvent.KEYCODE_BACK -> {
