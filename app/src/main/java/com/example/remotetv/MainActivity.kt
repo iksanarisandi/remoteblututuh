@@ -12,13 +12,15 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.view.KeyEvent
 
 class MainActivity : AppCompatActivity() {
 
@@ -197,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         val layout = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.VERTICAL
             setPadding(40, 40, 40, 40)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
         }
 
         val title = TextView(this).apply {
@@ -269,13 +272,32 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 40, 20, 20)
         }
 
-        okButton = createButton("OK", android.R.color.holo_green_light) { sendConsumerKey(0x0041) } // 0x41 is Menu Pick (Select)
+        // OK Button (Enter - 0x28)
+        okButton = createStyledButton("OK", android.R.color.holo_green_light)
+        setupButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() })
         buttonContainer.addView(okButton)
 
-        playPauseButton = createButton("▶||", android.R.color.holo_blue_light) { sendConsumerKey(0x00CD) }
+        // Play Button (Consumer Play/Pause - 0xCD)
+        playPauseButton = createStyledButton("▶||", android.R.color.holo_blue_light)
+        setupButton(playPauseButton, { sendConsumerKeyDown(0x00CD) }, { sendConsumerKeyUp() })
         buttonContainer.addView(playPauseButton)
 
-        bothButton = createButton("OK+▶ (Pair)", android.R.color.holo_orange_light) { sendCombo() }
+        // Combo Button (OK + Play)
+        bothButton = createStyledButton("OK+▶ (Pair)", android.R.color.holo_orange_light)
+        setupButton(bothButton, 
+            { 
+                // Down: Send BOTH
+                sendKeyDown(0x28) // Keyboard Enter
+                sendConsumerKeyDown(0x00CD) // Consumer Play/Pause
+                Log.d("HID", "COMBO DOWN SENT")
+            }, 
+            { 
+                // Up: Release BOTH
+                sendKeyUp()
+                sendConsumerKeyUp()
+                Log.d("HID", "COMBO UP SENT")
+            }
+        )
         buttonContainer.addView(bothButton)
 
         layout.addView(buttonContainer)
@@ -286,17 +308,19 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
         }
 
-        volUpButton = createButton("VOL +", android.R.color.holo_purple) { sendConsumerKey(0x00E9) }
+        volUpButton = createStyledButton("VOL +", android.R.color.holo_purple)
+        setupButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
         volContainer.addView(volUpButton)
 
-        volDownButton = createButton("VOL -", android.R.color.background_dark) { sendConsumerKey(0x00EA) }
+        volDownButton = createStyledButton("VOL -", android.R.color.background_dark)
+        setupButton(volDownButton, { sendConsumerKeyDown(0x00EA) }, { sendConsumerKeyUp() })
         volContainer.addView(volDownButton)
 
         layout.addView(volContainer)
         setContentView(layout)
     }
 
-    private fun createButton(text: String, color: Int, onClick: () -> Unit): Button {
+    private fun createStyledButton(text: String, color: Int): Button {
         return Button(this).apply {
             this.text = text
             setBackgroundColor(resources.getColor(color))
@@ -307,7 +331,25 @@ class MainActivity : AppCompatActivity() {
                 200,
                 androidx.appcompat.widget.LinearLayoutCompat.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(10, 10, 10, 10) }
-            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun setupButton(button: Button, onDown: () -> Unit, onUp: () -> Unit) {
+        button.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start()
+                    onDown()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                    onUp()
+                    true
+                }
+                else -> false
+            }
         }
     }
 
@@ -333,7 +375,7 @@ class MainActivity : AppCompatActivity() {
         if (!tvDevices.isNullOrEmpty()) {
             val device = tvDevices.first()
             deviceInfoText.text = "Target: ${device.name} (Siap connect)"
-            connectedDevice = device // Simpan target tapi belum tentu connect
+            connectedDevice = device 
             statusText.text = "Target dipilih. Klik Hubungkan."
         } else {
             statusText.text = "TV B860H tidak ditemukan di paired devices"
@@ -353,76 +395,34 @@ class MainActivity : AppCompatActivity() {
         hidDevice?.connect(connectedDevice)
     }
 
-    private fun sendKey(keyCode: Int) {
-        // Send Key Down
+    // Keyboard Helpers
+    private fun sendKeyDown(keyCode: Int) {
         val report = ByteArray(8)
         report[2] = keyCode.toByte() // Key 1
         sendReport(1, report)
-        
-        // Wait briefly
-        try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
+    }
 
-        // Send Key Up
+    private fun sendKeyUp() {
         sendReport(1, ByteArray(8))
     }
 
-    private fun sendConsumerKey(usageCode: Int) {
-        // Consumer Control Report Structure: 2 Keys x 2 Bytes (Little Endian) = 4 Bytes
+    // Consumer Helpers
+    private fun sendConsumerKeyDown(usageCode: Int) {
         val report = ByteArray(4)
-        
-        // Key 1
         report[0] = (usageCode and 0xFF).toByte()
         report[1] = ((usageCode shr 8) and 0xFF).toByte()
-        
-        // Key 2 (Empty)
-        report[2] = 0x00
-        report[3] = 0x00
-        
-        Log.d("HID", "Sending Consumer Key: $usageCode")
-        val sent = sendReport(2, report) // Key Down
-        
-        // Wait briefly
-        try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
-
-        if (sent) sendReport(2, ByteArray(4)) // Key Up
+        // report[2] & [3] are 0x00
+        sendReport(2, report)
     }
 
-    private fun sendCombo() {
-        // Send OK (Menu Pick) and Play SIMULTANEOUSLY in the SAME Consumer Report
-        // Report ID 2, Count 2 (4 bytes total)
-        
-        Thread {
-            val report = ByteArray(4)
-            
-            // Key 1: OK (Menu Pick - 0x0041)
-            val codeOk = 0x0041
-            report[0] = (codeOk and 0xFF).toByte()
-            report[1] = ((codeOk shr 8) and 0xFF).toByte()
-            
-            // Key 2: Play (0x00B0) - Note: Using Play (B0) instead of Play/Pause (CD) for pairing
-            val codePlay = 0x00B0
-            report[2] = (codePlay and 0xFF).toByte()
-            report[3] = ((codePlay shr 8) and 0xFF).toByte()
-            
-            Log.d("HID", "Sending Combo OK(41) + Play(B0)...")
-            sendReport(2, report) // Both Keys Down
-
-            // HOLD for 4 seconds
-            runOnUiThread { Toast.makeText(this, "Tahan 4 detik...", Toast.LENGTH_SHORT).show() }
-            Thread.sleep(4000)
-
-            // Release
-            sendReport(2, ByteArray(4))
-            
-            Log.d("HID", "Combo Released")
-            runOnUiThread { Toast.makeText(this, "Combo Selesai", Toast.LENGTH_SHORT).show() }
-        }.start()
+    private fun sendConsumerKeyUp() {
+        sendReport(2, ByteArray(4))
     }
 
     private fun sendReport(id: Int, data: ByteArray): Boolean {
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return false
         if (connectedDevice != null) {
-            Log.d("HID", "Sending Report ID: $id, Data: ${data.joinToString { "%02x".format(it) }}")
+            // Log.d("HID", "Sending Report ID: $id") 
             return hidDevice?.sendReport(connectedDevice, id, data) ?: false
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
@@ -430,54 +430,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        Log.d("HID", "Physical Key Down: $keyCode")
-        return when (keyCode) {
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> {
-                sendKey(0x28) // HID Enter
-                true
-            }
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                sendConsumerKey(0x00E9) // HID Vol+
-                true
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                sendConsumerKey(0x00EA) // HID Vol-
-                true
-            }
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                sendConsumerKey(0x00CD) // HID Play/Pause
-                true
-            }
-            KeyEvent.KEYCODE_MUTE -> {
-                sendConsumerKey(0x00E2) // HID Mute
-                true
-            }
-            KeyEvent.KEYCODE_BACK -> {
-                super.onKeyDown(keyCode, event) // Biarkan tombol back default
-            }
-            else -> super.onKeyDown(keyCode, event)
-        }
-    }
-
     private fun checkPermissions() {
-        val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
-            permissions.add(android.Manifest.permission.BLUETOOTH_ADVERTISE)
+            val permissions = arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE
+            )
+            val missing = permissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, missing.toTypedArray(), PERMISSION_REQUEST_CODE)
+            }
         } else {
-            permissions.add(android.Manifest.permission.BLUETOOTH)
-            permissions.add(android.Manifest.permission.BLUETOOTH_ADMIN)
-        }
-        permissions.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
-
-        val needed = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (needed.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERMISSION_REQUEST_CODE)
+            val permissions = arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            )
+            if (ContextCompat.checkSelfPermission(this, permissions[0]) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
+            }
         }
     }
 }
