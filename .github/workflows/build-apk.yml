@@ -1,0 +1,87 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - '*.gradle'
+      - 'gradle/**'
+      - '.github/**'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x gradlew
+        continue-on-error: true
+
+      - name: Build Debug APK
+        run: |
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Build Release APK
+        run: |
+          if [ -f gradlew ]; then
+            ./gradlew assembleRelease
+          else
+            gradle assembleRelease
+          fi
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 30
+
+      - name: Get APK size
+        run: |
+          echo "Debug APK size:"
+          ls -lh app/build/outputs/apk/debug/app-debug.apk || echo "Debug APK not found"
+          echo "Release APK size:"
+          ls -lh app/build/outputs/apk/release/app-release-unsigned.apk || echo "Release APK not found"
+
+      - name: Create Release Summary
+        run: |
+          echo "## APK Build Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts Available:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Debug APK**: Check the Artifacts section below" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release APK**: Check the Artifacts section below" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### How to Download:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Scroll down to the **Artifacts** section" >> $GITHUB_STEP_SUMMARY
+          echo "2. Click on **app-debug** or **app-release**" >> $GITHUB_STEP_SUMMARY
+          echo "3. Download the APK file" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation:" >> $GITHUB_STEP_SUMMARY
+          echo "- Transfer the APK to your Android device" >> $GITHUB_STEP_SUMMARY
+          echo "- Install the APK (enable \"Install from unknown sources\")" >> $GITHUB_STEP_SUMMARY
