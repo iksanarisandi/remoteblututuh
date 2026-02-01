@@ -2,30 +2,33 @@ package com.example.remotetv
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothSocket
+import android.bluetooth.BluetoothHidDevice
+import android.bluetooth.BluetoothHidDeviceAppQosSettings
+import android.bluetooth.BluetoothHidDeviceAppSdpSettings
+import android.bluetooth.BluetoothProfile
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.io.IOException
-import java.io.OutputStream
-import java.util.UUID
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-    private var bluetoothSocket: BluetoothSocket? = null
-    private var outputStream: OutputStream? = null
+    private var hidDevice: BluetoothHidDevice? = null
     private var connectedDevice: BluetoothDevice? = null
+    private val executor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    // UUID SPP (Serial Port Profile) - standar untuk komunikasi Bluetooth
-    private val uuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-
+    // UI Components
     private lateinit var statusText: TextView
     private lateinit var deviceInfoText: TextView
     private lateinit var connectButton: Button
@@ -38,20 +41,151 @@ class MainActivity : AppCompatActivity() {
 
     private val PERMISSION_REQUEST_CODE = 100
 
+    // HID Report Map for Keyboard and Consumer Control
+    private val REPORT_MAP = byteArrayOf(
+        0x05.toByte(), 0x01.toByte(),       // Usage Page (Generic Desktop)
+        0x09.toByte(), 0x06.toByte(),       // Usage (Keyboard)
+        0xA1.toByte(), 0x01.toByte(),       // Collection (Application)
+        0x85.toByte(), 0x01.toByte(),       //   Report ID (1)
+        0x05.toByte(), 0x07.toByte(),       //   Usage Page (Key Codes)
+        0x19.toByte(), 0xE0.toByte(),       //   Usage Minimum (224)
+        0x29.toByte(), 0xE7.toByte(),       //   Usage Maximum (231)
+        0x15.toByte(), 0x00.toByte(),       //   Logical Minimum (0)
+        0x25.toByte(), 0x01.toByte(),       //   Logical Maximum (1)
+        0x75.toByte(), 0x01.toByte(),       //   Report Size (1)
+        0x95.toByte(), 0x08.toByte(),       //   Report Count (8)
+        0x81.toByte(), 0x02.toByte(),       //   Input (Data, Variable, Absolute) - Modifier byte
+        0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
+        0x75.toByte(), 0x08.toByte(),       //   Report Size (8)
+        0x81.toByte(), 0x01.toByte(),       //   Input (Constant) - Reserved byte
+        0x95.toByte(), 0x05.toByte(),       //   Report Count (5)
+        0x75.toByte(), 0x01.toByte(),       //   Report Size (1)
+        0x05.toByte(), 0x08.toByte(),       //   Usage Page (LEDs)
+        0x19.toByte(), 0x01.toByte(),       //   Usage Minimum (1)
+        0x29.toByte(), 0x05.toByte(),       //   Usage Maximum (5)
+        0x91.toByte(), 0x02.toByte(),       //   Output (Data, Variable, Absolute) - LEDs
+        0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
+        0x75.toByte(), 0x03.toByte(),       //   Report Size (3)
+        0x91.toByte(), 0x01.toByte(),       //   Output (Constant) - Padding
+        0x95.toByte(), 0x06.toByte(),       //   Report Count (6)
+        0x75.toByte(), 0x08.toByte(),       //   Report Size (8)
+        0x15.toByte(), 0x00.toByte(),       //   Logical Minimum (0)
+        0x25.toByte(), 0x65.toByte(),       //   Logical Maximum (101)
+        0x05.toByte(), 0x07.toByte(),       //   Usage Page (Key Codes)
+        0x19.toByte(), 0x00.toByte(),       //   Usage Minimum (0)
+        0x29.toByte(), 0x65.toByte(),       //   Usage Maximum (101)
+        0x81.toByte(), 0x00.toByte(),       //   Input (Data, Array) - Key arrays (6 bytes)
+        0xC0.toByte(),                      // End Collection
+
+        0x05.toByte(), 0x0C.toByte(),       // Usage Page (Consumer Devices)
+        0x09.toByte(), 0x01.toByte(),       // Usage (Consumer Control)
+        0xA1.toByte(), 0x01.toByte(),       // Collection (Application)
+        0x85.toByte(), 0x02.toByte(),       //   Report ID (2)
+        0x05.toByte(), 0x0C.toByte(),       //   Usage Page (Consumer Devices)
+        0x15.toByte(), 0x00.toByte(),       //   Logical Minimum (0)
+        0x25.toByte(), 0x01.toByte(),       //   Logical Maximum (1)
+        0x75.toByte(), 0x01.toByte(),       //   Report Size (1)
+        0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
+        0x09.toByte(), 0xCD.toByte(),       //   Usage (Play/Pause)
+        0x81.toByte(), 0x06.toByte(),       //   Input (Data, Variable, Relative)
+        0x09.toByte(), 0xE9.toByte(),       //   Usage (Volume Increment)
+        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x09.toByte(), 0xEA.toByte(),       //   Usage (Volume Decrement)
+        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x09.toByte(), 0xE2.toByte(),       //   Usage (Mute)
+        0x81.toByte(), 0x06.toByte(),       //   Input
+        0x95.toByte(), 0x04.toByte(),       //   Report Count (4)
+        0x81.toByte(), 0x01.toByte(),       //   Input (Constant) - Padding
+        0xC0.toByte()                       // End Collection
+    )
+
+    private val hidDeviceCallback = object : BluetoothHidDevice.Callback() {
+        override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+            Log.d("HID", "App Status Changed: registered=$registered")
+            runOnUiThread {
+                if (registered) {
+                    statusText.text = "HID Registered. Ready to Connect."
+                } else {
+                    statusText.text = "HID Registration Failed."
+                }
+            }
+        }
+
+        override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
+            Log.d("HID", "Connection State: $state")
+            runOnUiThread {
+                when (state) {
+                    BluetoothProfile.STATE_CONNECTED -> {
+                        connectedDevice = device
+                        statusText.text = "✓ Terkoneksi ke ${device?.name}"
+                        statusText.setTextColor(resources.getColor(android.R.color.holo_green_dark))
+                        connectButton.text = "Terhubung"
+                        connectButton.isEnabled = false
+                        scanButton.isEnabled = false
+                        Toast.makeText(this@MainActivity, "Connected to ${device?.name}", Toast.LENGTH_SHORT).show()
+                    }
+                    BluetoothProfile.STATE_DISCONNECTED -> {
+                        connectedDevice = null
+                        statusText.text = "Terputus"
+                        statusText.setTextColor(resources.getColor(android.R.color.holo_red_dark))
+                        connectButton.isEnabled = true
+                        scanButton.isEnabled = true
+                    }
+                }
+            }
+        }
+    }
+
+    private val serviceListener = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+            if (profile == BluetoothProfile.HID_DEVICE) {
+                hidDevice = proxy as BluetoothHidDevice
+                registerHidDevice()
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.HID_DEVICE) {
+                hidDevice = null
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Create UI programmatically
         createUI()
-
-        // Check permissions
         checkPermissions()
-
-        // Check Bluetooth
-        if (bluetoothAdapter == null) {
+        
+        if (bluetoothAdapter != null) {
+            bluetoothAdapter.getProfileProxy(this, serviceListener, BluetoothProfile.HID_DEVICE)
+        } else {
             statusText.text = "Bluetooth tidak tersedia"
-            statusText.setTextColor(resources.getColor(android.R.color.holo_red_dark))
         }
+    }
+
+    private fun registerHidDevice() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+
+        val sdpSettings = BluetoothHidDeviceAppSdpSettings(
+            "Remote TV",
+            "Android Remote",
+            "Android",
+            BluetoothHidDevice.SUBCLASS1_COMBO,
+            REPORT_MAP
+        )
+
+        val qosSettings = BluetoothHidDeviceAppQosSettings(
+            BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT,
+            800,
+            9,
+            0,
+            11250,
+            BluetoothHidDeviceAppQosSettings.MAX
+        )
+
+        hidDevice?.registerApp(sdpSettings, null, qosSettings, executor, hidDeviceCallback)
     }
 
     private fun createUI() {
@@ -60,18 +194,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(40, 40, 40, 40)
         }
 
-        // Title
         val title = TextView(this).apply {
-            text = "Remote TV Bluetooth"
+            text = "Remote TV HID"
             textSize = 24f
             setTextColor(resources.getColor(android.R.color.black))
             gravity = android.view.Gravity.CENTER
         }
         layout.addView(title)
 
-        // Status
         statusText = TextView(this).apply {
-            text = "Status: Tidak terkoneksi"
+            text = "Status: Menunggu HID Service..."
             textSize = 16f
             setTextColor(resources.getColor(android.R.color.holo_red_dark))
             gravity = android.view.Gravity.CENTER
@@ -79,7 +211,6 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(statusText)
 
-        // Device Info
         deviceInfoText = TextView(this).apply {
             text = "Device: Belum terkoneksi"
             textSize = 14f
@@ -88,88 +219,54 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(deviceInfoText)
 
-        // Scan Button
         scanButton = Button(this).apply {
             text = "🔍 Scan Device"
             setBackgroundColor(resources.getColor(android.R.color.holo_blue_dark))
             setTextColor(resources.getColor(android.R.color.white))
             setPadding(30, 20, 30, 20)
-            setOnClickListener {
-                scanDevices()
-            }
+            setOnClickListener { scanDevices() }
         }
         layout.addView(scanButton)
 
-        // Connect Button
         connectButton = Button(this).apply {
             text = "Hubungkan ke B860H"
             setBackgroundColor(resources.getColor(android.R.color.holo_green_dark))
             setTextColor(resources.getColor(android.R.color.white))
             setPadding(30, 20, 30, 20)
-            setOnClickListener {
-                connectToDevice()
-            }
+            setOnClickListener { connectToDevice() }
         }
         layout.addView(connectButton)
 
-        // Button container
         val buttonContainer = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             setPadding(20, 40, 20, 20)
         }
 
-        // OK Button
-        okButton = createButton("OK", android.R.color.holo_green_light) {
-            sendCommand("OK")
-        }
+        okButton = createButton("OK", android.R.color.holo_green_light) { sendKey(0x28) } // 0x28 is Enter
         buttonContainer.addView(okButton)
 
-        // Play/Pause Button
-        playPauseButton = createButton("▶||", android.R.color.holo_blue_light) {
-            sendCommand("PLAY_PAUSE")
-        }
+        playPauseButton = createButton("▶||", android.R.color.holo_blue_light) { sendConsumerKey(0xCD.toByte()) }
         buttonContainer.addView(playPauseButton)
 
-        // Both Button
-        bothButton = createButton("OK+▶||", android.R.color.holo_orange_light) {
-            sendCommand("OK_PLAY_PAUSE")
-        }
+        bothButton = createButton("OK+▶||", android.R.color.holo_orange_light) { sendCombo() }
         buttonContainer.addView(bothButton)
 
         layout.addView(buttonContainer)
 
-        // Volume Button container
         val volContainer = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             setPadding(20, 20, 20, 20)
         }
 
-        // Volume Up
-        volUpButton = createButton("VOL +", android.R.color.holo_purple) {
-            sendCommand("VOL_UP")
-        }
+        volUpButton = createButton("VOL +", android.R.color.holo_purple) { sendConsumerKey(0xE9.toByte()) }
         volContainer.addView(volUpButton)
 
-        // Volume Down
-        volDownButton = createButton("VOL -", android.R.color.background_dark) {
-            sendCommand("VOL_DOWN")
-        }
+        volDownButton = createButton("VOL -", android.R.color.background_dark) { sendConsumerKey(0xEA.toByte()) }
         volContainer.addView(volDownButton)
 
         layout.addView(volContainer)
-
-        // Info
-        val info = TextView(this).apply {
-            text = "Pastikan TV B860H sudah terpair\nGunakan Scan untuk cari device"
-            textSize = 12f
-            setTextColor(resources.getColor(android.R.color.darker_gray))
-            gravity = android.view.Gravity.CENTER
-            setPadding(20, 40, 20, 20)
-        }
-        layout.addView(info)
-
         setContentView(layout)
     }
 
@@ -183,21 +280,101 @@ class MainActivity : AppCompatActivity() {
             layoutParams = androidx.appcompat.widget.LinearLayoutCompat.LayoutParams(
                 200,
                 androidx.appcompat.widget.LinearLayoutCompat.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(10, 10, 10, 10)
-            }
-            setOnClickListener {
-                onClick()
-            }
+            ).apply { setMargins(10, 10, 10, 10) }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun scanDevices() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
+        
+        val pairedDevices = bluetoothAdapter?.bondedDevices
+        val tvDevices = pairedDevices?.filter { 
+            it.name.contains("B860H", ignoreCase = true) || it.name.contains("TV", ignoreCase = true) 
+        }
+
+        if (!tvDevices.isNullOrEmpty()) {
+            val device = tvDevices.first()
+            deviceInfoText.text = "Target: ${device.name} (Siap connect)"
+            connectedDevice = device // Simpan target tapi belum tentu connect
+            statusText.text = "Target dipilih. Klik Hubungkan."
+        } else {
+            statusText.text = "TV B860H tidak ditemukan di paired devices"
+            Toast.makeText(this, "Pair dulu di settings", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun connectToDevice() {
+        if (connectedDevice == null) {
+            scanDevices()
+            if (connectedDevice == null) return
+        }
+        
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
+        
+        statusText.text = "Mencoba connect ke ${connectedDevice?.name}..."
+        hidDevice?.connect(connectedDevice)
+    }
+
+    private fun sendKey(keyCode: Int) {
+        // Send Key Down
+        val report = ByteArray(8)
+        report[2] = keyCode.toByte() // Key 1
+        sendReport(1, report)
+        
+        // Send Key Up
+        sendReport(1, ByteArray(8))
+    }
+
+    private fun sendConsumerKey(usageCode: Byte) {
+        // Consumer Control Report Structure based on Descriptor:
+        // Byte 0: Consumer Control (Bit 0: Play/Pause, Bit 1: Vol+, Bit 2: Vol-, Bit 3: Mute)
+        // Wait, our descriptor is specific bits or array?
+        // Let's re-read the descriptor I wrote.
+        // Usage Play/Pause (CD), Vol+ (E9), Vol- (EA), Mute (E2).
+        // Report Size 1, Count 1 for each.
+        // So Byte 0 bits:
+        // Bit 0: Play/Pause
+        // Bit 1: Vol+
+        // Bit 2: Vol-
+        // Bit 3: Mute
+        
+        val report = ByteArray(1)
+        when (usageCode) {
+             0xCD.toByte() -> report[0] = 1 // Bit 0
+             0xE9.toByte() -> report[0] = 2 // Bit 1
+             0xEA.toByte() -> report[0] = 4 // Bit 2
+             0xE2.toByte() -> report[0] = 8 // Bit 3
+        }
+        
+        sendReport(2, report) // Key Down
+        sendReport(2, ByteArray(1)) // Key Up
+    }
+
+    private fun sendCombo() {
+        // OK then Play/Pause
+        Thread {
+            sendKey(0x28) // Enter
+            Thread.sleep(100)
+            sendConsumerKey(0xCD.toByte()) // Play/Pause
+        }.start()
+    }
+
+    private fun sendReport(id: Int, data: ByteArray) {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
+        if (connectedDevice != null) {
+            hidDevice?.sendReport(connectedDevice, id, data)
+        } else {
+            runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
         }
     }
 
     private fun checkPermissions() {
         val permissions = mutableListOf<String>()
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
             permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(android.Manifest.permission.BLUETOOTH_ADVERTISE)
         } else {
             permissions.add(android.Manifest.permission.BLUETOOTH)
             permissions.add(android.Manifest.permission.BLUETOOTH_ADMIN)
@@ -210,143 +387,6 @@ class MainActivity : AppCompatActivity() {
 
         if (needed.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), PERMISSION_REQUEST_CODE)
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                Toast.makeText(this, "Permissions granted", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Permissions denied", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun scanDevices() {
-        if (bluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth tidak tersedia", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (!bluetoothAdapter!!.isEnabled) {
-            Toast.makeText(this, "Aktifkan Bluetooth dulu", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        statusText.text = "Scanning devices..."
-        statusText.setTextColor(resources.getColor(android.R.color.holo_blue_dark))
-
-        // Get paired devices
-        val pairedDevices = bluetoothAdapter!!.bondedDevices
-
-        val tvDevices = pairedDevices.filter { 
-            it.name.contains("B860H", ignoreCase = true) ||
-            it.name.contains("TV", ignoreCase = true) ||
-            it.name.contains("JQVITEK", ignoreCase = true)
-        }
-
-        if (tvDevices.isNotEmpty()) {
-            connectedDevice = tvDevices.first()
-            deviceInfoText.text = "Device ditemukan: ${connectedDevice?.name}"
-            statusText.text = "Device ditemukan! Klik Hubungkan"
-            statusText.setTextColor(resources.getColor(android.R.color.holo_green_dark))
-            
-            connectButton.text = "Hubungkan ke ${connectedDevice?.name}"
-            connectButton.isEnabled = true
-        } else {
-            statusText.text = "TV B860H tidak ditemukan"
-            statusText.setTextColor(resources.getColor(android.R.color.holo_red_dark))
-            
-            // Show all paired devices
-            val allDevices = pairedDevices.joinToString("\n") { "${it.name} - ${it.address}" }
-            deviceInfoText.text = "Paired devices:\n$allDevices"
-            
-            Toast.makeText(this, "Pair B860H dulu di Bluetooth settings", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun connectToDevice() {
-        if (connectedDevice == null) {
-            Toast.makeText(this, "Scan device dulu", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        Thread {
-            try {
-                bluetoothSocket = connectedDevice?.createRfcommSocketToServiceRecord(uuid)
-                bluetoothSocket?.connect()
-                outputStream = bluetoothSocket?.outputStream
-
-                runOnUiThread {
-                    statusText.text = "✓ Terkoneksi ke ${connectedDevice?.name}"
-                    statusText.setTextColor(resources.getColor(android.R.color.holo_green_dark))
-                    connectButton.text = "Terhubung"
-                    connectButton.isEnabled = false
-                    scanButton.isEnabled = false
-                    
-                    Toast.makeText(this, "Berhasil terkoneksi!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: IOException) {
-                runOnUiThread {
-                    statusText.text = "Gagal terkoneksi: ${e.message}"
-                    statusText.setTextColor(resources.getColor(android.R.color.holo_red_dark))
-                    Toast.makeText(this, "Koneksi gagal", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun sendCommand(command: String) {
-        if (outputStream == null) {
-            Toast.makeText(this, "Belum terkoneksi ke TV", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        Thread {
-            try {
-                // Kirim command sebagai byte array
-                val message = when(command) {
-                    "OK" -> byteArrayOf(0x0D) // Enter key
-                    "PLAY_PAUSE" -> byteArrayOf(0x20) // Space key
-                    "OK_PLAY_PAUSE" -> byteArrayOf(0x0D, 0x20) // Enter + Space
-                    "VOL_UP" -> byteArrayOf(0x00, 0x00, 0x40, 0x00) // Volume up command
-                    "VOL_DOWN" -> byteArrayOf(0x00, 0x00, 0x80, 0x00) // Volume down command
-                    else -> command.toByteArray()
-                }
-                
-                outputStream?.write(message)
-                outputStream?.flush()
-
-                runOnUiThread {
-                    val displayText = when(command) {
-                        "OK_PLAY_PAUSE" -> "OK + Play/Pause terkirim!"
-                        "PLAY_PAUSE" -> "Play/Pause terkirim!"
-                        "VOL_UP" -> "Volume Up terkirim!"
-                        "VOL_DOWN" -> "Volume Down terkirim!"
-                        else -> "$command terkirim!"
-                    }
-                    Toast.makeText(this, displayText, Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: IOException) {
-                runOnUiThread {
-                    Toast.makeText(this, "Gagal mengirim: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }.start()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        try {
-            bluetoothSocket?.close()
-        } catch (e: IOException) {
-            e.printStackTrace()
         }
     }
 }
