@@ -312,9 +312,14 @@ class MainActivity : AppCompatActivity() {
         featureRow.addView(btnYoutube)
 
         // Voice Button
-        val btnVoice = createStyledButton("🎤 Voice", android.R.color.holo_blue_light)
-        btnVoice.setOnClickListener { startVoiceRecognition() }
+        val btnVoice = createStyledButton("🎤 Auto", android.R.color.holo_blue_light)
+        btnVoice.setOnClickListener { startVoiceRecognition(100) }
         featureRow.addView(btnVoice)
+
+        // Direct Voice Button (Input Only)
+        val btnDirectVoice = createStyledButton("🎤 Input", android.R.color.holo_green_dark)
+        btnDirectVoice.setOnClickListener { startVoiceRecognition(101) }
+        featureRow.addView(btnDirectVoice)
 
         layout.addView(featureRow)
 
@@ -382,7 +387,28 @@ class MainActivity : AppCompatActivity() {
         setContentView(scrollView)
     }
 
-    private fun startVoiceRecognition() {
+    private fun showKeyboardInput() {
+        val input = android.widget.EditText(this)
+        input.hint = "Ketik teks untuk dikirim..."
+        
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Keyboard Remote")
+            .setView(input)
+            .setPositiveButton("Kirim") { _, _ ->
+                val text = input.text.toString()
+                if (text.isNotEmpty()) {
+                    sendDirectInput(text)
+                }
+            }
+            .setNegativeButton("Batal", null)
+            .create()
+            
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        input.requestFocus()
+    }
+
+    private fun startVoiceRecognition(requestCode: Int) {
         val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Bicara sekarang...")
@@ -416,11 +442,17 @@ class MainActivity : AppCompatActivity() {
             // Tunggu UI Search muncul (Voice UI biasanya butuh waktu)
             try { Thread.sleep(2000) } catch (e: Exception) {}
 
-            // 2. Kirim tombol RIGHT untuk keluar dari mode Mic (jika perlu)
+            // 2. Kirim tombol RIGHT untuk keluar dari mode Mic
             // Banyak Android TV membuka search dalam mode "Listening". 
             // Tekan kanan untuk fokus ke text box.
             runOnUiThread { statusText.text = "Fokus ke text box..." }
             sendKeyDown(0x4F) // Right Arrow
+            try { Thread.sleep(200) } catch (e: Exception) {}
+            sendKeyUp()
+            try { Thread.sleep(200) } catch (e: Exception) {}
+
+            // Tambahan: Kirim ENTER untuk memastikan masuk mode ketik (jika perlu)
+            sendKeyDown(0x28) // Enter
             try { Thread.sleep(100) } catch (e: Exception) {}
             sendKeyUp()
             try { Thread.sleep(500) } catch (e: Exception) {}
@@ -603,6 +635,36 @@ class MainActivity : AppCompatActivity() {
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return false
         if (connectedDevice != null) {
             // Log.d("HID", "Sending Report ID: $id") 
+            return hidDevice?.sendReport(connectedDevice, id, data) ?: false
+        } else {
+            runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
+            return false
+        }
+    }
+
+    private fun checkPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val permissions = arrayOf(
+                android.Manifest.permission.BLUETOOTH_SCAN,
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_ADVERTISE
+            )
+            val missing = permissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, missing.toTypedArray(), PERMISSION_REQUEST_CODE)
+            }
+        } else {
+            val permissions = arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            )
+            if (ContextCompat.checkSelfPermission(this, permissions[0]) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
+            }
+        }
+    }
+}
             return hidDevice?.sendReport(connectedDevice, id, data) ?: false
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
