@@ -86,7 +86,7 @@ class MainActivity : AppCompatActivity() {
         0x19.toByte(), 0x00.toByte(),       //   Usage Minimum (0)
         0x2A.toByte(), 0xFF.toByte(), 0x03.toByte(), //   Usage Maximum (1023)
         0x75.toByte(), 0x10.toByte(),       //   Report Size (16)
-        0x95.toByte(), 0x01.toByte(),       //   Report Count (1)
+        0x95.toByte(), 0x02.toByte(),       //   Report Count (2) - Allow 2 keys simultaneously
         0x81.toByte(), 0x00.toByte(),       //   Input (Data, Array, Absolute)
         0xC0.toByte()                       // End Collection
     )
@@ -269,13 +269,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 40, 20, 20)
         }
 
-        okButton = createButton("OK", android.R.color.holo_green_light) { sendKey(0x28) } // 0x28 is Enter
+        okButton = createButton("OK", android.R.color.holo_green_light) { sendConsumerKey(0x0041) } // 0x41 is Menu Pick (Select)
         buttonContainer.addView(okButton)
 
         playPauseButton = createButton("▶||", android.R.color.holo_blue_light) { sendConsumerKey(0x00CD) }
         buttonContainer.addView(playPauseButton)
 
-        bothButton = createButton("OK+▶||", android.R.color.holo_orange_light) { sendCombo() }
+        bothButton = createButton("OK+▶ (Pair)", android.R.color.holo_orange_light) { sendCombo() }
         buttonContainer.addView(bothButton)
 
         layout.addView(buttonContainer)
@@ -367,10 +367,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sendConsumerKey(usageCode: Int) {
-        // Consumer Control Report Structure: 2 Bytes (Little Endian)
-        val report = ByteArray(2)
+        // Consumer Control Report Structure: 2 Keys x 2 Bytes (Little Endian) = 4 Bytes
+        val report = ByteArray(4)
+        
+        // Key 1
         report[0] = (usageCode and 0xFF).toByte()
         report[1] = ((usageCode shr 8) and 0xFF).toByte()
+        
+        // Key 2 (Empty)
+        report[2] = 0x00
+        report[3] = 0x00
         
         Log.d("HID", "Sending Consumer Key: $usageCode")
         val sent = sendReport(2, report) // Key Down
@@ -378,42 +384,35 @@ class MainActivity : AppCompatActivity() {
         // Wait briefly
         try { Thread.sleep(50) } catch (e: InterruptedException) { e.printStackTrace() }
 
-        if (sent) sendReport(2, ByteArray(2)) // Key Up
+        if (sent) sendReport(2, ByteArray(4)) // Key Up
     }
 
     private fun sendCombo() {
-        // Send OK and Play/Pause SIMULTANEOUSLY
-        // Note: Because OK is Report ID 1 (Keyboard) and Play/Pause is Report ID 2 (Consumer),
-        // we can't send them in a single report frame.
-        // However, we can simulate "Holding" them together by sending both "Down" states 
-        // before sending any "Up" states.
+        // Send OK (Menu Pick) and Play SIMULTANEOUSLY in the SAME Consumer Report
+        // Report ID 2, Count 2 (4 bytes total)
         
         Thread {
-            // 1. Press OK (Keyboard Down)
-            val reportOk = ByteArray(8)
-            reportOk[2] = 0x28.toByte() // Enter
-            sendReport(1, reportOk)
+            val report = ByteArray(4)
             
-            // Small delay to ensure first packet is processed but not released
-            Thread.sleep(20)
+            // Key 1: OK (Menu Pick - 0x0041)
+            val codeOk = 0x0041
+            report[0] = (codeOk and 0xFF).toByte()
+            report[1] = ((codeOk shr 8) and 0xFF).toByte()
+            
+            // Key 2: Play (0x00B0) - Note: Using Play (B0) instead of Play/Pause (CD) for pairing
+            val codePlay = 0x00B0
+            report[2] = (codePlay and 0xFF).toByte()
+            report[3] = ((codePlay shr 8) and 0xFF).toByte()
+            
+            Log.d("HID", "Sending Combo OK(41) + Play(B0)...")
+            sendReport(2, report) // Both Keys Down
 
-            // 2. Press Play/Pause (Consumer Down)
-            val reportMedia = ByteArray(2)
-            val usageCode = 0x00CD // Play/Pause
-            reportMedia[0] = (usageCode and 0xFF).toByte()
-            reportMedia[1] = ((usageCode shr 8) and 0xFF).toByte()
-            sendReport(2, reportMedia)
+            // HOLD for 4 seconds
+            runOnUiThread { Toast.makeText(this, "Tahan 4 detik...", Toast.LENGTH_SHORT).show() }
+            Thread.sleep(4000)
 
-            // 3. HOLD both for 3 seconds (standard pairing duration)
-            Log.d("HID", "Holding Combo OK + Play/Pause...")
-            runOnUiThread { Toast.makeText(this, "Tahan 3 detik...", Toast.LENGTH_SHORT).show() }
-            Thread.sleep(3000)
-
-            // 4. Release OK
-            sendReport(1, ByteArray(8))
-
-            // 5. Release Play/Pause
-            sendReport(2, ByteArray(2))
+            // Release
+            sendReport(2, ByteArray(4))
             
             Log.d("HID", "Combo Released")
             runOnUiThread { Toast.makeText(this, "Combo Selesai", Toast.LENGTH_SHORT).show() }
