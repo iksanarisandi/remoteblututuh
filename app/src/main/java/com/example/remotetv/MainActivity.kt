@@ -35,8 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceInfoText: TextView
     private lateinit var connectButton: Button
     private lateinit var okButton: Button
-    private lateinit var playPauseButton: Button
-    private lateinit var bothButton: Button
+    // Removed combo-related buttons
     private lateinit var volUpButton: Button
     private lateinit var volDownButton: Button
     private lateinit var scanButton: Button
@@ -274,38 +273,56 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(connectButton)
 
-        val buttonContainer = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+        // D-Pad Section
+        val dpadTitle = TextView(this).apply {
+            text = "D-Pad Navigasi"
+            textSize = 16f
+            setTextColor(resources.getColor(android.R.color.black))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 30, 0, 10)
+        }
+        layout.addView(dpadTitle)
+
+        // Row Up
+        val rowUp = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(20, 40, 20, 20)
+            setPadding(0, 10, 0, 10)
         }
+        val btnUp = createStyledButton("↑", android.R.color.holo_blue_dark)
+        setupRepeaterButton(btnUp, { sendKeyDown(0x52) }, { sendKeyUp() }) // Keyboard Up Arrow
+        rowUp.addView(btnUp)
+        layout.addView(rowUp)
 
-        // OK Button (Enter - 0x28)
+        // Row Middle (Left - OK - Right)
+        val rowMid = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 10, 0, 10)
+        }
+        val btnLeft = createStyledButton("←", android.R.color.holo_blue_dark)
+        setupRepeaterButton(btnLeft, { sendKeyDown(0x50) }, { sendKeyUp() }) // Keyboard Left Arrow
+        rowMid.addView(btnLeft)
+
         okButton = createStyledButton("OK", android.R.color.holo_green_light)
-        setupButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() })
-        buttonContainer.addView(okButton)
+        setupButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() }) // Keyboard Enter
+        rowMid.addView(okButton)
 
-        // Play Button (Consumer Play/Pause - 0xCD)
-        playPauseButton = createStyledButton("▶||", android.R.color.holo_blue_light)
-        setupButton(playPauseButton, { sendConsumerKeyDown(0x00CD) }, { sendConsumerKeyUp() })
-        buttonContainer.addView(playPauseButton)
+        val btnRight = createStyledButton("→", android.R.color.holo_blue_dark)
+        setupRepeaterButton(btnRight, { sendKeyDown(0x4F) }, { sendKeyUp() }) // Keyboard Right Arrow
+        rowMid.addView(btnRight)
+        layout.addView(rowMid)
 
-        // Combo Button (OK + Play)
-        bothButton = createStyledButton("OK+▶ (Pair)", android.R.color.holo_orange_light)
-        setupRepeaterButton(bothButton, 
-            { 
-                // Down: Send BOTH (Keyboard Enter + Consumer Play)
-                // Note: Using 0xB0 (Play) instead of 0xCD (Play/Pause) for better compatibility with "Play" prompt
-                sendComboDownMixed(0x28, 0x00B0) 
-            }, 
-            { 
-                // Up: Release BOTH
-                sendComboUp()
-            }
-        )
-        buttonContainer.addView(bothButton)
-
-        layout.addView(buttonContainer)
+        // Row Down
+        val rowDown = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 10, 0, 10)
+        }
+        val btnDown = createStyledButton("↓", android.R.color.holo_blue_dark)
+        setupRepeaterButton(btnDown, { sendKeyDown(0x51) }, { sendKeyUp() }) // Keyboard Down Arrow
+        rowDown.addView(btnDown)
+        layout.addView(rowDown)
 
         val volContainer = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
@@ -324,65 +341,10 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(volContainer)
 
-        // --- TEST COMBO SECTION ---
-        val comboTitle = TextView(this).apply {
-            text = "Test Kombinasi Pairing (Tahan Tombol)"
-            textSize = 16f
-            setTextColor(resources.getColor(android.R.color.black))
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 30, 0, 10)
-        }
-        layout.addView(comboTitle)
-
-        // 1. Std OK (KB Enter) + Play (Cons B0) - Mixed
-        val btnCombo1 = createStyledButton("1. Enter + Play", android.R.color.holo_orange_dark)
-        setupRepeaterButton(btnCombo1, { sendComboDownMixed(0x28, 0x00B0) }, { sendComboUp() })
-        layout.addView(btnCombo1)
-
-        // 2. Std OK (KB Enter) + Play/Pause (Cons CD) - Mixed
-        val btnCombo2 = createStyledButton("2. Enter + Play/Pause", android.R.color.holo_orange_light)
-        setupRepeaterButton(btnCombo2, { sendComboDownMixed(0x28, 0x00CD) }, { sendComboUp() })
-        layout.addView(btnCombo2)
-
-        // 3. Menu Pick (Cons 41) + Play (Cons B0) - Single Report
-        val btnCombo3 = createStyledButton("3. Menu + Play (1 Rep)", android.R.color.holo_red_light)
-        setupRepeaterButton(btnCombo3, { sendComboDownConsumer(0x0041, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo3)
-
-        // 4. Menu Pick (Cons 41) + Play/Pause (Cons CD) - Single Report
-        val btnCombo4 = createStyledButton("4. Menu + P/P (1 Rep)", android.R.color.holo_red_dark)
-        setupRepeaterButton(btnCombo4, { sendComboDownConsumer(0x0041, 0x00CD) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo4)
-
-        // 5. Select (Cons 42) + Play/Pause (Cons CD) - Single Report
-        val btnCombo5 = createStyledButton("5. Select + P/P", android.R.color.holo_blue_dark)
-        setupRepeaterButton(btnCombo5, { sendComboDownConsumer(0x0042, 0x00CD) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo5)
-
-        // 6. Media Select (Cons 183) + Play (Cons B0) - Single Report
-        val btnCombo6 = createStyledButton("6. Media Sel + Play", android.R.color.holo_green_dark)
-        setupRepeaterButton(btnCombo6, { sendComboDownConsumer(0x0183, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo6)
-
-        // 7. Data On Screen (Cons 60) + Play (Cons B0) - Single Report (Rare)
-        val btnCombo7 = createStyledButton("7. Data + Play", android.R.color.holo_purple)
-        setupRepeaterButton(btnCombo7, { sendComboDownConsumer(0x0060, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo7)
-
-        // 8. Assign Selection (Cons 81) + Play (Cons B0) - Single Report (Rare)
-        val btnCombo8 = createStyledButton("8. Assign + Play", android.R.color.background_dark)
-        setupRepeaterButton(btnCombo8, { sendComboDownConsumer(0x0081, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo8)
-
-        // 9. Recall Last (Cons 83) + Play (Cons B0) - Single Report (Rare)
-        val btnCombo9 = createStyledButton("9. Recall + Play", android.R.color.holo_orange_dark)
-        setupRepeaterButton(btnCombo9, { sendComboDownConsumer(0x0083, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo9)
-
-        // 10. Enter (Cons 40 - Deprecated) + Play (Cons B0)
-        val btnCombo10 = createStyledButton("10. Ent(40) + Play", android.R.color.holo_red_dark)
-        setupRepeaterButton(btnCombo10, { sendComboDownConsumer(0x0040, 0x00B0) }, { sendConsumerKeyUp() })
-        layout.addView(btnCombo10)
+        // Settings Button (Consumer Menu - 0x0040)
+        val settingsButton = createStyledButton("SET", android.R.color.holo_orange_dark)
+        setupButton(settingsButton, { sendConsumerKeyDown(0x0040) }, { sendConsumerKeyUp() })
+        layout.addView(settingsButton)
 
         setContentView(scrollView)
     }
