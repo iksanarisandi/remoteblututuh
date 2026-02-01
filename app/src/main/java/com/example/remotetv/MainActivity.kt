@@ -196,11 +196,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createUI() {
+        val scrollView = androidx.core.widget.NestedScrollView(this).apply {
+            layoutParams = androidx.appcompat.widget.LinearLayoutCompat.LayoutParams(
+                androidx.appcompat.widget.LinearLayoutCompat.LayoutParams.MATCH_PARENT,
+                androidx.appcompat.widget.LinearLayoutCompat.LayoutParams.MATCH_PARENT
+            )
+        }
+
         val layout = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.VERTICAL
             setPadding(40, 40, 40, 40)
             gravity = android.view.Gravity.CENTER_HORIZONTAL
         }
+        scrollView.addView(layout)
 
         val title = TextView(this).apply {
             text = "Remote TV HID"
@@ -315,7 +323,43 @@ class MainActivity : AppCompatActivity() {
         volContainer.addView(volDownButton)
 
         layout.addView(volContainer)
-        setContentView(layout)
+
+        // --- TEST COMBO SECTION ---
+        val comboTitle = TextView(this).apply {
+            text = "Test Kombinasi Pairing (Tahan Tombol)"
+            textSize = 16f
+            setTextColor(resources.getColor(android.R.color.black))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 30, 0, 10)
+        }
+        layout.addView(comboTitle)
+
+        // 1. Std OK (KB Enter) + Play (Cons B0) - Mixed
+        val btnCombo1 = createStyledButton("1. Enter + Play", android.R.color.holo_orange_dark)
+        setupRepeaterButton(btnCombo1, { sendComboDownMixed(0x28, 0x00B0) }, { sendComboUp() })
+        layout.addView(btnCombo1)
+
+        // 2. Std OK (KB Enter) + Play/Pause (Cons CD) - Mixed
+        val btnCombo2 = createStyledButton("2. Enter + Play/Pause", android.R.color.holo_orange_light)
+        setupRepeaterButton(btnCombo2, { sendComboDownMixed(0x28, 0x00CD) }, { sendComboUp() })
+        layout.addView(btnCombo2)
+
+        // 3. Menu Pick (Cons 41) + Play (Cons B0) - Single Report
+        val btnCombo3 = createStyledButton("3. Menu + Play (1 Rep)", android.R.color.holo_red_light)
+        setupRepeaterButton(btnCombo3, { sendComboDownConsumer(0x0041, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo3)
+
+        // 4. Menu Pick (Cons 41) + Play/Pause (Cons CD) - Single Report
+        val btnCombo4 = createStyledButton("4. Menu + P/P (1 Rep)", android.R.color.holo_red_dark)
+        setupRepeaterButton(btnCombo4, { sendComboDownConsumer(0x0041, 0x00CD) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo4)
+
+        // 5. Select (Cons 42) + Play/Pause (Cons CD) - Single Report
+        val btnCombo5 = createStyledButton("5. Select + P/P", android.R.color.holo_blue_dark)
+        setupRepeaterButton(btnCombo5, { sendComboDownConsumer(0x0042, 0x00CD) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo5)
+
+        setContentView(scrollView)
     }
 
     private fun createStyledButton(text: String, color: Int): Button {
@@ -457,6 +501,19 @@ class MainActivity : AppCompatActivity() {
         sendReport(2, reportC)
         
         Log.d("HID", "Sent Combo: Key($keyboardCode) + Cons($consumerCode)")
+    }
+
+    private fun sendComboDownConsumer(code1: Int, code2: Int) {
+        val report = ByteArray(8)
+        // Key 1
+        report[0] = (code1 and 0xFF).toByte()
+        report[1] = ((code1 shr 8) and 0xFF).toByte()
+        // Key 2
+        report[2] = (code2 and 0xFF).toByte()
+        report[3] = ((code2 shr 8) and 0xFF).toByte()
+        
+        sendReport(2, report)
+        Log.d("HID", "Sent Combo Consumer: $code1 + $code2")
     }
 
     private fun sendComboUp() {
