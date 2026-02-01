@@ -290,38 +290,50 @@ class MainActivity : AppCompatActivity() {
         advRow.addView(discoverButton)
         layout.addView(advRow)
 
-        // --- Feature Row: Power | YouTube | Voice ---
-        val featureRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+        // --- Control Row: Power | YouTube ---
+        val controlRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 20, 0, 20)
+            setPadding(0, 10, 0, 10)
         }
         
         // Power Button (0x0030)
         val btnPower = createStyledButton("POWER", android.R.color.holo_red_dark)
         setupRepeaterButton(btnPower, { sendConsumerKeyDown(0x0030) }, { sendConsumerKeyUp() })
-        featureRow.addView(btnPower)
+        controlRow.addView(btnPower)
 
         // YouTube Button (0x0221 Search / AL)
         val btnYoutube = createStyledButton("YouTube", android.R.color.holo_red_light)
-        // Using Search (0x0221) as requested alternative
         btnYoutube.setOnClickListener { 
             sendConsumerKeyDown(0x0221)
             Handler(Looper.getMainLooper()).postDelayed({ sendConsumerKeyUp() }, 100)
         }
-        featureRow.addView(btnYoutube)
+        controlRow.addView(btnYoutube)
+        layout.addView(controlRow)
+
+        // --- Input Row: Voice Auto | Voice Input | Keyboard ---
+        val inputRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 10, 0, 20)
+        }
 
         // Voice Button
         val btnVoice = createStyledButton("🎤 Auto", android.R.color.holo_blue_light)
         btnVoice.setOnClickListener { startVoiceRecognition(100) }
-        featureRow.addView(btnVoice)
+        inputRow.addView(btnVoice)
 
         // Direct Voice Button (Input Only)
         val btnDirectVoice = createStyledButton("🎤 Input", android.R.color.holo_green_dark)
         btnDirectVoice.setOnClickListener { startVoiceRecognition(101) }
-        featureRow.addView(btnDirectVoice)
+        inputRow.addView(btnDirectVoice)
 
-        layout.addView(featureRow)
+        // Keyboard Button
+        val btnKeyboard = createStyledButton("⌨ Keyb", android.R.color.holo_orange_light)
+        btnKeyboard.setOnClickListener { showKeyboardInput() }
+        inputRow.addView(btnKeyboard)
+
+        layout.addView(inputRow)
 
         // --- D-Pad ---
         val dpadTitle = TextView(this).apply {
@@ -422,11 +434,15 @@ class MainActivity : AppCompatActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 100 && resultCode == RESULT_OK && data != null) {
+        if (resultCode == RESULT_OK && data != null) {
             val result = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
             val text = result?.get(0)
             if (!text.isNullOrEmpty()) {
-                sendVoiceSearch(text)
+                if (requestCode == 100) {
+                    sendVoiceSearch(text)
+                } else if (requestCode == 101) {
+                    sendDirectInput(text)
+                }
             }
         }
     }
@@ -659,36 +675,6 @@ class MainActivity : AppCompatActivity() {
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return false
         if (connectedDevice != null) {
             // Log.d("HID", "Sending Report ID: $id") 
-            return hidDevice?.sendReport(connectedDevice, id, data) ?: false
-        } else {
-            runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
-            return false
-        }
-    }
-
-    private fun checkPermissions() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val permissions = arrayOf(
-                android.Manifest.permission.BLUETOOTH_SCAN,
-                android.Manifest.permission.BLUETOOTH_CONNECT,
-                android.Manifest.permission.BLUETOOTH_ADVERTISE
-            )
-            val missing = permissions.filter {
-                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-            }
-            if (missing.isNotEmpty()) {
-                ActivityCompat.requestPermissions(this, missing.toTypedArray(), PERMISSION_REQUEST_CODE)
-            }
-        } else {
-            val permissions = arrayOf(
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            )
-            if (ContextCompat.checkSelfPermission(this, permissions[0]) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE)
-            }
-        }
-    }
-}
             return hidDevice?.sendReport(connectedDevice, id, data) ?: false
         } else {
             runOnUiThread { Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show() }
