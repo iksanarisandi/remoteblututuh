@@ -22,6 +22,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
+import android.speech.RecognizerIntent
+import androidx.activity.result.contract.ActivityResultContracts
+
 class MainActivity : AppCompatActivity() {
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -34,13 +37,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
     private lateinit var deviceInfoText: TextView
     private lateinit var connectButton: Button
-    private lateinit var okButton: Button
-    // Removed combo-related buttons
-    private lateinit var volUpButton: Button
-    private lateinit var volDownButton: Button
     private lateinit var scanButton: Button
 
     private val PERMISSION_REQUEST_CODE = 100
+
+    private val speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val data = result.data
+            val matches = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!matches.isNullOrEmpty()) {
+                val text = matches[0]
+                Toast.makeText(this, "Sending: $text", Toast.LENGTH_SHORT).show()
+                sendString(text)
+            }
+        }
+    }
 
     // HID Report Map for Keyboard and Consumer Control
     private val REPORT_MAP = byteArrayOf(
@@ -71,10 +82,10 @@ class MainActivity : AppCompatActivity() {
         0x95.toByte(), 0x06.toByte(),       //   Report Count (6)
         0x75.toByte(), 0x08.toByte(),       //   Report Size (8)
         0x15.toByte(), 0x00.toByte(),       //   Logical Minimum (0)
-        0x25.toByte(), 0x65.toByte(),       //   Logical Maximum (101)
+        0x26.toByte(), 0xFF.toByte(), 0x00.toByte(), //   Logical Maximum (255)
         0x05.toByte(), 0x07.toByte(),       //   Usage Page (Key Codes)
         0x19.toByte(), 0x00.toByte(),       //   Usage Minimum (0)
-        0x29.toByte(), 0x65.toByte(),       //   Usage Maximum (101)
+        0x2A.toByte(), 0xFF.toByte(), 0x00.toByte(), //   Usage Maximum (255)
         0x81.toByte(), 0x00.toByte(),       //   Input (Data, Array) - Key arrays (6 bytes)
         0xC0.toByte(),                      // End Collection
 
@@ -234,103 +245,130 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(deviceInfoText)
 
+        // Connection Buttons
+        val connRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 10, 0, 10)
+        }
         scanButton = Button(this).apply {
-            text = "🔍 Scan Device"
-            setBackgroundColor(resources.getColor(android.R.color.holo_blue_dark))
-            setTextColor(resources.getColor(android.R.color.white))
-            setPadding(30, 20, 30, 20)
+            text = "🔍 Scan"
             setOnClickListener { scanDevices() }
         }
-        layout.addView(scanButton)
-
-        val resetHidButton = Button(this).apply {
-            text = "🔄 Reset HID Service"
-            setBackgroundColor(resources.getColor(android.R.color.holo_orange_dark))
+        connRow.addView(scanButton)
+        
+        connectButton = Button(this).apply {
+            text = "Connect"
+            setBackgroundColor(resources.getColor(android.R.color.holo_green_dark))
             setTextColor(resources.getColor(android.R.color.white))
-            setPadding(30, 20, 30, 20)
+            setOnClickListener { connectToDevice() }
+        }
+        connRow.addView(connectButton)
+        layout.addView(connRow)
+
+        val advRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 10, 0, 20)
+        }
+        val resetHidButton = Button(this).apply {
+            text = "Reset HID"
             setOnClickListener { 
                 statusText.text = "Resetting HID..."
                 registerHidDevice() 
             }
         }
-        layout.addView(resetHidButton)
+        advRow.addView(resetHidButton)
 
         val discoverButton = Button(this).apply {
-            text = "📡 Make Discoverable"
-            setBackgroundColor(resources.getColor(android.R.color.holo_purple))
-            setTextColor(resources.getColor(android.R.color.white))
-            setPadding(30, 20, 30, 20)
+            text = "Discoverable"
             setOnClickListener { makeDiscoverable() }
         }
-        layout.addView(discoverButton)
+        advRow.addView(discoverButton)
+        layout.addView(advRow)
 
-        connectButton = Button(this).apply {
-            text = "Hubungkan ke B860H"
-            setBackgroundColor(resources.getColor(android.R.color.holo_green_dark))
-            setTextColor(resources.getColor(android.R.color.white))
-            setPadding(30, 20, 30, 20)
-            setOnClickListener { connectToDevice() }
-        }
-        layout.addView(connectButton)
+        // --- POWER Button ---
+        val powerBtn = createStyledButton("POWER", android.R.color.holo_red_dark)
+        setupRepeaterButton(powerBtn, { sendConsumerKeyDown(0x0030) }, { sendConsumerKeyUp() })
+        layout.addView(powerBtn)
 
-        // D-Pad Section
-        val dpadTitle = TextView(this).apply {
-            text = "D-Pad Navigasi"
-            textSize = 16f
-            setTextColor(resources.getColor(android.R.color.black))
+        // --- Voice & YouTube ---
+        val featureRow = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
+            orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 30, 0, 10)
+            setPadding(0, 20, 0, 20)
+        }
+        val btnVoice = Button(this).apply {
+            text = "🎤 Voice"
+            textSize = 18f
+            setPadding(30, 20, 30, 20)
+            setOnClickListener { startVoiceRecognition() }
+        }
+        featureRow.addView(btnVoice)
+
+        val btnYoutube = Button(this).apply {
+            text = "▶ YouTube"
+            textSize = 18f
+            setPadding(30, 20, 30, 20)
+            setBackgroundColor(resources.getColor(android.R.color.holo_red_light))
+            setTextColor(resources.getColor(android.R.color.white))
+            setOnClickListener { sendConsumerKeyDown(0x0221) } // AC Search
+        }
+        featureRow.addView(btnYoutube)
+        layout.addView(featureRow)
+
+        // --- D-Pad ---
+        val dpadTitle = TextView(this).apply {
+            text = "Navigation"
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
         }
         layout.addView(dpadTitle)
 
-        // Row Up
+        // Up
         val rowUp = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 10, 0, 10)
         }
         val btnUp = createStyledButton("↑", android.R.color.holo_blue_dark)
-        setupRepeaterButton(btnUp, { sendKeyDown(0x52) }, { sendKeyUp() }) // Keyboard Up Arrow
+        setupRepeaterButton(btnUp, { sendKeyDown(0x52) }, { sendKeyUp() })
         rowUp.addView(btnUp)
         layout.addView(rowUp)
 
-        // Row Middle (Left - OK - Right)
+        // Left - OK - Right
         val rowMid = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 10, 0, 10)
         }
         val btnLeft = createStyledButton("←", android.R.color.holo_blue_dark)
-        setupRepeaterButton(btnLeft, { sendKeyDown(0x50) }, { sendKeyUp() }) // Keyboard Left Arrow
+        setupRepeaterButton(btnLeft, { sendKeyDown(0x50) }, { sendKeyUp() })
         rowMid.addView(btnLeft)
 
         okButton = createStyledButton("OK", android.R.color.holo_green_light)
-        setupRepeaterButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() }) // Keyboard Enter (Hold supported)
+        setupRepeaterButton(okButton, { sendKeyDown(0x28) }, { sendKeyUp() })
         rowMid.addView(okButton)
 
         val btnRight = createStyledButton("→", android.R.color.holo_blue_dark)
-        setupRepeaterButton(btnRight, { sendKeyDown(0x4F) }, { sendKeyUp() }) // Keyboard Right Arrow
+        setupRepeaterButton(btnRight, { sendKeyDown(0x4F) }, { sendKeyUp() })
         rowMid.addView(btnRight)
         layout.addView(rowMid)
 
-        // Row Down
+        // Down
         val rowDown = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 10, 0, 10)
         }
         val btnDown = createStyledButton("↓", android.R.color.holo_blue_dark)
-        setupRepeaterButton(btnDown, { sendKeyDown(0x51) }, { sendKeyUp() }) // Keyboard Down Arrow
+        setupRepeaterButton(btnDown, { sendKeyDown(0x51) }, { sendKeyUp() })
         rowDown.addView(btnDown)
         layout.addView(rowDown)
 
+        // --- Volume ---
         val volContainer = androidx.appcompat.widget.LinearLayoutCompat(this).apply {
             orientation = androidx.appcompat.widget.LinearLayoutCompat.HORIZONTAL
             gravity = android.view.Gravity.CENTER
             setPadding(20, 20, 20, 20)
         }
-
-        // Volume Buttons with Repeater
         volUpButton = createStyledButton("VOL +", android.R.color.holo_purple)
         setupRepeaterButton(volUpButton, { sendConsumerKeyDown(0x00E9) }, { sendConsumerKeyUp() })
         volContainer.addView(volUpButton)
@@ -338,135 +376,65 @@ class MainActivity : AppCompatActivity() {
         volDownButton = createStyledButton("VOL -", android.R.color.background_dark)
         setupRepeaterButton(volDownButton, { sendConsumerKeyDown(0x00EA) }, { sendConsumerKeyUp() })
         volContainer.addView(volDownButton)
-
         layout.addView(volContainer)
 
-        // --- SET Alternatif ---
-        val setTitle = TextView(this).apply {
-            text = "SET / Settings Alternatif"
-            textSize = 16f
-            setTextColor(resources.getColor(android.R.color.black))
-            gravity = android.view.Gravity.CENTER
-            setPadding(0, 20, 0, 10)
-        }
-        layout.addView(setTitle)
-
-        // 1) Consumer Menu (0x0040)
-        val setMenuBtn = createStyledButton("SET: Menu (0x40)", android.R.color.holo_orange_dark)
-        setupRepeaterButton(setMenuBtn, { sendConsumerKeyDown(0x0040) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuBtn)
-
-        // 2) Consumer Menu Pick / Select (0x0041)
-        val setPickBtn = createStyledButton("SET: Menu Pick (0x41)", android.R.color.holo_orange_light)
-        setupRepeaterButton(setPickBtn, { sendConsumerKeyDown(0x0041) }, { sendConsumerKeyUp() })
-        layout.addView(setPickBtn)
-
-        // 3) Consumer Media Select (0x0183) - sering sebagai sumber input/gear
-        val setMediaSelBtn = createStyledButton("SET: Media Select (0x183)", android.R.color.holo_green_dark)
-        setupRepeaterButton(setMediaSelBtn, { sendConsumerKeyDown(0x0183) }, { sendConsumerKeyUp() })
-        layout.addView(setMediaSelBtn)
-
-        // 4) Consumer AC Home (0x0223) - sering membuka menu utama/setting
-        val setHomeBtn = createStyledButton("SET: Home (0x223)", android.R.color.holo_blue_dark)
-        setupRepeaterButton(setHomeBtn, { sendConsumerKeyDown(0x0223) }, { sendConsumerKeyUp() })
-        layout.addView(setHomeBtn)
-
-        // 5) Keyboard Application/Context Menu (0x65)
-        val setKeyboardMenuBtn = createStyledButton("SET: Keyboard Menu (0x65)", android.R.color.holo_red_light)
-        setupRepeaterButton(setKeyboardMenuBtn, { sendKeyDown(0x65) }, { sendKeyUp() })
-        layout.addView(setKeyboardMenuBtn)
-
-        // 6) Consumer Menu Up (0x0042)
-        val setMenuUpBtn = createStyledButton("SET: Menu Up (0x42)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuUpBtn, { sendConsumerKeyDown(0x0042) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuUpBtn)
-
-        // 7) Consumer Menu Down (0x0043)
-        val setMenuDownBtn = createStyledButton("SET: Menu Down (0x43)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuDownBtn, { sendConsumerKeyDown(0x0043) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuDownBtn)
-
-        // 8) Consumer Menu Left (0x0044)
-        val setMenuLeftBtn = createStyledButton("SET: Menu Left (0x44)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuLeftBtn, { sendConsumerKeyDown(0x0044) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuLeftBtn)
-
-        // 9) Consumer Menu Right (0x0045)
-        val setMenuRightBtn = createStyledButton("SET: Menu Right (0x45)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuRightBtn, { sendConsumerKeyDown(0x0045) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuRightBtn)
-
-        // 10) Consumer Menu Escape (0x0046)
-        val setMenuEscBtn = createStyledButton("SET: Menu Esc (0x46)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuEscBtn, { sendConsumerKeyDown(0x0046) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuEscBtn)
-
-        // 11) Consumer Menu Value Increase (0x0047)
-        val setValueIncBtn = createStyledButton("SET: Value + (0x47)", android.R.color.holo_green_light)
-        setupRepeaterButton(setValueIncBtn, { sendConsumerKeyDown(0x0047) }, { sendConsumerKeyUp() })
-        layout.addView(setValueIncBtn)
-
-        // 12) Consumer Menu Value Decrease (0x0048)
-        val setValueDecBtn = createStyledButton("SET: Value - (0x48)", android.R.color.holo_green_light)
-        setupRepeaterButton(setValueDecBtn, { sendConsumerKeyDown(0x0048) }, { sendConsumerKeyUp() })
-        layout.addView(setValueDecBtn)
-
-        // 13) Consumer AC Back (0x0224) - sering dipakai untuk kembali/keluar dari menu
-        val setBackBtn = createStyledButton("SET: Back (0x224)", android.R.color.darker_gray)
-        setupRepeaterButton(setBackBtn, { sendConsumerKeyDown(0x0224) }, { sendConsumerKeyUp() })
-        layout.addView(setBackBtn)
-
-        // 14) Consumer AC Search (0x0221) - beberapa aplikasi membuka panel pencarian/pengaturan
-        val setSearchBtn = createStyledButton("SET: Search (0x221)", android.R.color.holo_purple)
-        setupRepeaterButton(setSearchBtn, { sendConsumerKeyDown(0x0221) }, { sendConsumerKeyUp() })
-        layout.addView(setSearchBtn)
-
-        // 15) Keyboard Escape (0x29) - alternatif umum untuk keluar menu
-        val setEscKbBtn = createStyledButton("SET: ESC (KB 0x29)", android.R.color.background_dark)
-        setupRepeaterButton(setEscKbBtn, { sendKeyDown(0x29) }, { sendKeyUp() })
-        layout.addView(setEscKbBtn)
-
-        // 6) Consumer Menu Up (0x0042)
-        val setMenuUpBtn = createStyledButton("SET: Menu Up (0x42)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuUpBtn, { sendConsumerKeyDown(0x0042) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuUpBtn)
-
-        // 7) Consumer Menu Down (0x0043)
-        val setMenuDownBtn = createStyledButton("SET: Menu Down (0x43)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuDownBtn, { sendConsumerKeyDown(0x0043) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuDownBtn)
-
-        // 8) Consumer Menu Left (0x0044)
-        val setMenuLeftBtn = createStyledButton("SET: Menu Left (0x44)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuLeftBtn, { sendConsumerKeyDown(0x0044) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuLeftBtn)
-
-        // 9) Consumer Menu Right (0x0045)
-        val setMenuRightBtn = createStyledButton("SET: Menu Right (0x45)", android.R.color.holo_blue_light)
-        setupRepeaterButton(setMenuRightBtn, { sendConsumerKeyDown(0x0045) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuRightBtn)
-
-        // 10) Consumer Menu Escape (0x0046)
-        val setMenuEscBtn = createStyledButton("SET: Menu Esc (0x46)", android.R.color.darker_gray)
-        setupRepeaterButton(setMenuEscBtn, { sendConsumerKeyDown(0x0046) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuEscBtn)
-
-        // 11) Consumer Menu Value Increase (0x0047)
-        val setMenuPlusBtn = createStyledButton("SET: Menu + (0x47)", android.R.color.holo_green_light)
-        setupRepeaterButton(setMenuPlusBtn, { sendConsumerKeyDown(0x0047) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuPlusBtn)
-
-        // 12) Consumer Menu Value Decrease (0x0048)
-        val setMenuMinusBtn = createStyledButton("SET: Menu - (0x48)", android.R.color.holo_red_dark)
-        setupRepeaterButton(setMenuMinusBtn, { sendConsumerKeyDown(0x0048) }, { sendConsumerKeyUp() })
-        layout.addView(setMenuMinusBtn)
-
-        // 13) AL Consumer Control Configuration (0x0182)
-        val setConfigBtn = createStyledButton("SET: Config (0x182)", android.R.color.holo_orange_light)
-        setupRepeaterButton(setConfigBtn, { sendConsumerKeyDown(0x0182) }, { sendConsumerKeyUp() })
-        layout.addView(setConfigBtn)
-
         setContentView(scrollView)
+    }
+
+    private fun startVoiceRecognition() {
+        val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Bicara sekarang...")
+        }
+        try {
+            startActivityForResult(intent, 100)
+        } catch (e: Exception) {
+            statusText.text = "Voice Error: ${e.message}"
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 100 && resultCode == RESULT_OK && data != null) {
+            val result = data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
+            val text = result?.get(0)
+            if (!text.isNullOrEmpty()) {
+                statusText.text = "Sending: $text"
+                sendString(text)
+            }
+        }
+    }
+
+    private fun sendString(text: String) {
+        Thread {
+            text.forEach { char ->
+                val keycode = charToHid(char)
+                if (keycode != 0) {
+                    val shift = if (char.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(char)) 0x02 else 0x00
+                    sendModifierKeyDown(shift, keycode)
+                    try { Thread.sleep(20) } catch (e: Exception) {}
+                    sendKeyUp()
+                    try { Thread.sleep(20) } catch (e: Exception) {}
+                }
+            }
+        }.start()
+    }
+
+    private fun charToHid(c: Char): Int {
+        val char = c.lowercaseChar()
+        return when (char) {
+            'a' -> 0x04; 'b' -> 0x05; 'c' -> 0x06; 'd' -> 0x07; 'e' -> 0x08
+            'f' -> 0x09; 'g' -> 0x0A; 'h' -> 0x0B; 'i' -> 0x0C; 'j' -> 0x0D
+            'k' -> 0x0E; 'l' -> 0x0F; 'm' -> 0x10; 'n' -> 0x11; 'o' -> 0x12
+            'p' -> 0x13; 'q' -> 0x14; 'r' -> 0x15; 's' -> 0x16; 't' -> 0x17
+            'u' -> 0x18; 'v' -> 0x19; 'w' -> 0x1A; 'x' -> 0x1B; 'y' -> 0x1C; 'z' -> 0x1D
+            '1' -> 0x1E; '2' -> 0x1F; '3' -> 0x20; '4' -> 0x21; '5' -> 0x22
+            '6' -> 0x23; '7' -> 0x24; '8' -> 0x25; '9' -> 0x26; '0' -> 0x27
+            ' ' -> 0x2C; '\n' -> 0x28; '-' -> 0x2D; '=' -> 0x2E; '[' -> 0x2F
+            ']' -> 0x30; '\\' -> 0x31; ';' -> 0x33; '\'' -> 0x34; '`' -> 0x35
+            ',' -> 0x36; '.' -> 0x37; '/' -> 0x38
+            else -> 0
+        }
     }
 
     private fun createStyledButton(text: String, color: Int): Button {
@@ -576,6 +544,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Keyboard Helpers
+    private fun sendModifierKeyDown(modifier: Int, keyCode: Int) {
+        val report = ByteArray(8)
+        report[0] = modifier.toByte() // Modifier
+        report[2] = keyCode.toByte() // Key 1
+        sendReport(1, report)
+    }
+
     private fun sendKeyDown(keyCode: Int) {
         val report = ByteArray(8)
         report[2] = keyCode.toByte() // Key 1
