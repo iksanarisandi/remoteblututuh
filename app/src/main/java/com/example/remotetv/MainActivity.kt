@@ -359,6 +359,31 @@ class MainActivity : AppCompatActivity() {
         setupRepeaterButton(btnCombo5, { sendComboDownConsumer(0x0042, 0x00CD) }, { sendConsumerKeyUp() })
         layout.addView(btnCombo5)
 
+        // 6. Media Select (Cons 183) + Play (Cons B0) - Single Report
+        val btnCombo6 = createStyledButton("6. Media Sel + Play", android.R.color.holo_green_dark)
+        setupRepeaterButton(btnCombo6, { sendComboDownConsumer(0x0183, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo6)
+
+        // 7. Data On Screen (Cons 60) + Play (Cons B0) - Single Report (Rare)
+        val btnCombo7 = createStyledButton("7. Data + Play", android.R.color.holo_purple)
+        setupRepeaterButton(btnCombo7, { sendComboDownConsumer(0x0060, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo7)
+
+        // 8. Assign Selection (Cons 81) + Play (Cons B0) - Single Report (Rare)
+        val btnCombo8 = createStyledButton("8. Assign + Play", android.R.color.background_dark)
+        setupRepeaterButton(btnCombo8, { sendComboDownConsumer(0x0081, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo8)
+
+        // 9. Recall Last (Cons 83) + Play (Cons B0) - Single Report (Rare)
+        val btnCombo9 = createStyledButton("9. Recall + Play", android.R.color.holo_orange_dark)
+        setupRepeaterButton(btnCombo9, { sendComboDownConsumer(0x0083, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo9)
+
+        // 10. Enter (Cons 40 - Deprecated) + Play (Cons B0)
+        val btnCombo10 = createStyledButton("10. Ent(40) + Play", android.R.color.holo_red_dark)
+        setupRepeaterButton(btnCombo10, { sendComboDownConsumer(0x0040, 0x00B0) }, { sendConsumerKeyUp() })
+        layout.addView(btnCombo10)
+
         setContentView(scrollView)
     }
 
